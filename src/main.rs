@@ -6,7 +6,6 @@ mod interactive;
 mod prompt;
 mod providers;
 mod shell_integration;
-mod update_checker;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -17,6 +16,10 @@ use interactive::get_user_input;
 use std::io::{self, IsTerminal};
 use std::process::Command;
 use tokio_util::sync::CancellationToken;
+
+fn exit_with_code(code: i32) -> ! {
+    std::process::exit(code);
+}
 
 #[cfg(unix)]
 fn setup_terminal() {
@@ -42,7 +45,7 @@ fn handle_interrupt<T>(
         Ok(val) => Ok(val),
         Err(dialoguer::Error::IO(e)) if e.kind() == io::ErrorKind::Interrupted => {
             eprint!("\x1b[?25h");
-            std::process::exit(130);
+            exit_with_code(130);
         }
         Err(e) => Err(Box::new(e)),
     }
@@ -184,15 +187,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         colored::control::set_override(true);
     }
 
-    update_checker::check_for_updates().await;
-
     match shell_integration::auto_setup_shell_function() {
         Ok(true) => {
             eprintln!(
                 "{}",
                 "restart shell or run 'source ~/.bashrc' ('source ~/.config/fish/config.fish' for fish).".yellow()
             );
-            std::process::exit(0);
+            exit_with_code(0);
         }
         Ok(false) => {}
         Err(_) => {}
@@ -226,7 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let err = NlshError::ConfigError(e.to_string());
                 display_error(&err.to_string());
             }
-            std::process::exit(1);
+            exit_with_code(1);
         }
     };
 
@@ -234,7 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(p) => p,
         Err(e) => {
             display_error(&e.to_string());
-            std::process::exit(1);
+            exit_with_code(1);
         }
     };
 
@@ -354,7 +355,7 @@ async fn process_command_single(
         tokio::signal::ctrl_c().await.ok();
         cancel_clone.cancel();
         eprintln!();
-        std::process::exit(130);
+        exit_with_code(130);
     });
 
     let response = match provider.generate(&prompt).await {
@@ -448,7 +449,7 @@ fn execute_interactive_command(command: &str) -> Result<(), Box<dyn std::error::
                 .status()?;
 
             if !status.success() {
-                std::process::exit(status.code().unwrap_or(1));
+                exit_with_code(status.code().unwrap_or(1));
             }
         }
     }

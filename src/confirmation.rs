@@ -21,7 +21,7 @@ pub fn confirm_execution() -> Result<bool, io::Error> {
     };
 
     let original_termios = termios;
-    termios.c_lflag &= !(libc::ICANON | libc::ECHO);
+    termios.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
     termios.c_cc[libc::VMIN] = 1;
     termios.c_cc[libc::VTIME] = 0;
 
@@ -38,24 +38,11 @@ pub fn confirm_execution() -> Result<bool, io::Error> {
             Ok(_) => {
                 match input[0] {
                     b'\n' | b'\r' => break Ok(true), // enter
-                    3 => {
-                        // ctrl+c
-                        unsafe {
-                            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &original_termios);
-                        }
-                        eprint!("\r\x1b[K\x1b[?25h");
-                        std::process::exit(130);
-                    }
-                    _ => continue, // ignore all other input
+                    3 => break Ok(false),            // ctrl+c - cancel
+                    _ => continue,                   // ignore all other input
                 }
             }
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => {
-                unsafe {
-                    libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &original_termios);
-                }
-                eprint!("\r\x1b[K\x1b[?25h");
-                std::process::exit(130);
-            }
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => break Ok(false),
             Err(e) => break Err(e),
         }
     };
@@ -65,8 +52,10 @@ pub fn confirm_execution() -> Result<bool, io::Error> {
         libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &original_termios);
     }
 
-    if result.is_ok() {
-        eprint!("\r\x1b[K");
+    match result {
+        Ok(true) => eprint!("\r\x1b[K"), // clear prompt line only, keep command visible
+        Ok(false) => eprint!("\r\x1b[K\x1b[1A\x1b[K\x1b[?25h"), // clear prompt and command on cancel
+        Err(_) => {}
     }
 
     result
