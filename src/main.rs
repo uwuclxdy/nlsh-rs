@@ -1,4 +1,5 @@
 mod config;
+mod config_migration;
 mod confirmation;
 mod error;
 mod interactive;
@@ -48,7 +49,8 @@ fn handle_interrupt<T>(
 }
 
 fn get_model_name(config: &config::Config) -> String {
-    match &config.provider.config {
+    let provider = config.get_provider_config();
+    match &provider.config {
         config::ProviderSpecificConfig::Gemini { gemini } => gemini.model.clone(),
         config::ProviderSpecificConfig::Ollama { ollama } => ollama.model.clone(),
         config::ProviderSpecificConfig::OpenAI { openai } => openai.model.clone(),

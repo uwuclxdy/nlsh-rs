@@ -20,7 +20,58 @@ fn handle_interrupt<T>(
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
-    pub provider: ProviderConfig,
+    #[serde(rename = "provider")]
+    pub active_provider: String,
+    #[serde(default)]
+    pub providers: MultiProviderConfig,
+}
+
+impl Config {
+    pub fn get_provider_config(&self) -> ProviderConfig {
+        match self.active_provider.as_str() {
+            "gemini" => ProviderConfig {
+                provider_type: "gemini".to_string(),
+                config: ProviderSpecificConfig::Gemini {
+                    gemini: self
+                        .providers
+                        .gemini
+                        .clone()
+                        .expect("gemini config not found for active provider"),
+                },
+            },
+            "ollama" => ProviderConfig {
+                provider_type: "ollama".to_string(),
+                config: ProviderSpecificConfig::Ollama {
+                    ollama: self
+                        .providers
+                        .ollama
+                        .clone()
+                        .expect("ollama config not found for active provider"),
+                },
+            },
+            "openai" => ProviderConfig {
+                provider_type: "openai".to_string(),
+                config: ProviderSpecificConfig::OpenAI {
+                    openai: self
+                        .providers
+                        .openai
+                        .clone()
+                        .expect("openai config not found for active provider"),
+                },
+            },
+            _ => panic!("unknown provider type: {}", self.active_provider),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct MultiProviderConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gemini: Option<GeminiConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ollama: Option<OllamaConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub openai: Option<OpenAIConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -68,54 +119,133 @@ fn get_config_path() -> PathBuf {
     config_dir.join("config.toml")
 }
 
+pub(crate) fn set_config_permissions(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = fs::metadata(path)?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o600);
+        fs::set_permissions(path, permissions)?;
+    }
+    Ok(())
+}
+
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     let config_path = get_config_path();
-    let contents = fs::read_to_string(config_path)?;
-    let config: Config = toml::from_str(&contents)?;
-    Ok(config)
+    let contents = fs::read_to_string(&config_path)?;
+
+    match toml::from_str::<Config>(&contents) {
+        Ok(config) => Ok(config),
+        Err(e) => {
+            if crate::config_migration::migrate_config(&config_path)? {
+                let contents = fs::read_to_string(&config_path)?;
+                Ok(toml::from_str(&contents)?)
+            } else {
+                Err(Box::new(e))
+            }
+        }
+    }
 }
 
 pub fn save_config(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let config_path = get_config_path();
     let toml_string = toml::to_string_pretty(config)?;
     fs::write(&config_path, toml_string)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let metadata = fs::metadata(&config_path)?;
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(0o600);
-        fs::set_permissions(&config_path, permissions)?;
-    }
-
+    set_config_permissions(&config_path)?;
     Ok(())
 }
 
 pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
-    let providers = vec!["Gemini API", "Ollama", "OpenAI Compatible"];
+    let existing_config = load_config().ok();
+    let current_provider = existing_config.as_ref().map(|c| c.active_provider.as_str());
+
+    let providers = [
+        ("Gemini API", "gemini"),
+        ("Ollama", "ollama"),
+        ("OpenAI Compatible", "openai"),
+    ];
+
+    let colored_providers: Vec<String> = providers
+        .iter()
+        .map(|(name, key)| {
+            if Some(*key) == current_provider {
+                format!("{}", name.green())
+            } else {
+                name.to_string()
+            }
+        })
+        .collect();
+
     let selection = handle_interrupt(
         Select::new()
             .with_prompt("Select API Provider")
-            .items(&providers)
+            .items(&colored_providers)
             .default(0)
             .interact(),
     )?;
 
-    let config = match selection {
-        0 => configure_gemini()?,
-        1 => configure_ollama()?,
-        2 => configure_openai()?,
+    let mut multi_providers = existing_config
+        .as_ref()
+        .map(|c| c.providers.clone())
+        .unwrap_or_default();
+
+    let has_saved_creds = match selection {
+        0 => multi_providers.gemini.is_some(),
+        1 => multi_providers.ollama.is_some(),
+        2 => multi_providers.openai.is_some(),
         _ => unreachable!(),
+    };
+
+    let has_saved = if has_saved_creds && Some(providers[selection].1) != current_provider {
+        handle_interrupt(
+            dialoguer::Confirm::new()
+                .with_prompt("use saved credentials?")
+                .default(true)
+                .interact(),
+        )?
+    } else {
+        false
+    };
+
+    let (active_provider, multi_providers) = if has_saved {
+        (providers[selection].1.to_string(), multi_providers)
+    } else {
+        let new_config = match selection {
+            0 => configure_gemini()?,
+            1 => configure_ollama()?,
+            2 => configure_openai()?,
+            _ => unreachable!(),
+        };
+
+        match &new_config.config {
+            ProviderSpecificConfig::Gemini { gemini } => {
+                multi_providers.gemini = Some(gemini.clone());
+            }
+            ProviderSpecificConfig::Ollama { ollama } => {
+                multi_providers.ollama = Some(ollama.clone());
+            }
+            ProviderSpecificConfig::OpenAI { openai } => {
+                multi_providers.openai = Some(openai.clone());
+            }
+        }
+
+        (new_config.provider_type, multi_providers)
+    };
+
+    let config = Config {
+        active_provider,
+        providers: multi_providers,
     };
 
     save_config(&config)?;
 
     eprintln!("{}", "✓ Configuration saved!".green().bold());
     eprintln!();
-    eprintln!("Provider: {}", providers[selection]);
+    eprintln!("Provider: {}", providers[selection].0);
 
-    match &config.provider.config {
+    let provider_config = config.get_provider_config();
+    match &provider_config.config {
         ProviderSpecificConfig::Gemini { gemini } => {
             eprintln!("Model: {}", gemini.model);
         }
@@ -132,7 +262,7 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn configure_gemini() -> Result<Config, Box<dyn std::error::Error>> {
+fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
     let api_key: String = handle_interrupt(
         Input::new()
             .with_prompt("Enter your Gemini API key")
@@ -146,17 +276,15 @@ fn configure_gemini() -> Result<Config, Box<dyn std::error::Error>> {
             .interact_text(),
     )?;
 
-    Ok(Config {
-        provider: ProviderConfig {
-            provider_type: "gemini".to_string(),
-            config: ProviderSpecificConfig::Gemini {
-                gemini: GeminiConfig { api_key, model },
-            },
+    Ok(ProviderConfig {
+        provider_type: "gemini".to_string(),
+        config: ProviderSpecificConfig::Gemini {
+            gemini: GeminiConfig { api_key, model },
         },
     })
 }
 
-fn configure_ollama() -> Result<Config, Box<dyn std::error::Error>> {
+fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
     let base_url: String = handle_interrupt(
         Input::new()
             .with_prompt("Enter Ollama base URL")
@@ -167,17 +295,15 @@ fn configure_ollama() -> Result<Config, Box<dyn std::error::Error>> {
     let model: String =
         handle_interrupt(Input::new().with_prompt("Enter model name").interact_text())?;
 
-    Ok(Config {
-        provider: ProviderConfig {
-            provider_type: "ollama".to_string(),
-            config: ProviderSpecificConfig::Ollama {
-                ollama: OllamaConfig { base_url, model },
-            },
+    Ok(ProviderConfig {
+        provider_type: "ollama".to_string(),
+        config: ProviderSpecificConfig::Ollama {
+            ollama: OllamaConfig { base_url, model },
         },
     })
 }
 
-fn configure_openai() -> Result<Config, Box<dyn std::error::Error>> {
+fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
     let base_url: String = handle_interrupt(
         Input::new()
             .with_prompt("Enter API base URL")
@@ -202,15 +328,13 @@ fn configure_openai() -> Result<Config, Box<dyn std::error::Error>> {
         .with_prompt("Enter model name")
         .interact_text()?;
 
-    Ok(Config {
-        provider: ProviderConfig {
-            provider_type: "openai".to_string(),
-            config: ProviderSpecificConfig::OpenAI {
-                openai: OpenAIConfig {
-                    base_url,
-                    api_key,
-                    model,
-                },
+    Ok(ProviderConfig {
+        provider_type: "openai".to_string(),
+        config: ProviderSpecificConfig::OpenAI {
+            openai: OpenAIConfig {
+                base_url,
+                api_key,
+                model,
             },
         },
     })
