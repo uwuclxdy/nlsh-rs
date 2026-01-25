@@ -1,16 +1,27 @@
 # nlsh-rs - Natural Language Shell written in Rust
 
-Describe what you want, get the command
-
-Inspired by [nlsh](https://github.com/junaid-mahmood/nlsh)
+Describe what you want, get the command!
 
 [![asciicast](https://asciinema.org/a/772400.svg)](https://asciinema.org/a/772400)
 
+> Inspired by [nlsh](https://github.com/junaid-mahmood/nlsh)
+
+## Requirements
+
+1. [Rust](https://www.rust-lang.org/tools/install)
+
 ## Installation
 
+latest commit:
 ```bash
 curl -sSL https://raw.githubusercontent.com/uwuclxdy/nlsh-rs/main/install.sh | sh
 ```
+
+from crates.io:
+```bash
+cargo install nlsh-rs
+```
+
 ## Setup
 
 ### Configure AI provider
