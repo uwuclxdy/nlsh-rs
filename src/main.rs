@@ -442,15 +442,11 @@ fn execute_interactive_command(command: &str) -> Result<(), Box<dyn std::error::
         }
         _ => {
             // execute external commands in subprocess with inherited state
-            let status = Command::new("sh")
+            Command::new("sh")
                 .arg("-c")
                 .arg(command)
                 .current_dir(std::env::current_dir()?)
                 .status()?;
-
-            if !status.success() {
-                exit_with_code(status.code().unwrap_or(1));
-            }
         }
     }
 
