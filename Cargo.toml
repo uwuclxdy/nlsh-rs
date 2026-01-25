@@ -7,7 +7,7 @@ description = "translate natural language to shell commands using AI"
 homepage = "https://github.com/uwuclxdy/nlsh-rs"
 repository = "https://github.com/uwuclxdy/nlsh-rs"
 readme = "README.md"
-keywords = ["cli", "ai", "shell", "terminal", "nlsh", "nlsh-rs", "uwuclxdy"]
+keywords = ["cli", "ai", "shell", "terminal", "nlsh"]
 categories = ["command-line-utilities"]
 
 [dependencies]
