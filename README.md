@@ -1,7 +1,5 @@
 # nlsh-rs - Natural Language Shell written in Rust
 
-Describe what you want, get the command!
-
 [![asciicast](https://asciinema.org/a/772400.svg)](https://asciinema.org/a/772400)
 
 > Inspired by [nlsh](https://github.com/junaid-mahmood/nlsh)
@@ -35,8 +33,10 @@ Select provider and enter credentials. Config is stored in `~/.config/nlsh-rs/co
 ## Supported Providers
 
 - **Gemini** - free tier available at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-- **Ollama** - local models (llama3.2, mistral, codellama)
+- **Ollama** - local models
 - **OpenAI-Compatible APIs** - chatgpt or compatible APIs (LMStudio, Groq, etc.)
+
+> You can get free OpenAI compatible API access to some models at https://www.askcodi.com/ and https://openrouter.ai/models?q=free
 
 ## Usage
 
