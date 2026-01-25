@@ -321,9 +321,9 @@ async fn process_command_interactive(
         return Err("empty response".into());
     }
 
-    display_command(&command);
+    let display_lines = display_command(&command);
 
-    let confirmed = confirm_execution()?;
+    let confirmed = confirm_execution(display_lines)?;
     if !confirmed {
         return Ok(());
     }
@@ -381,9 +381,9 @@ async fn process_command_single(
         return Err("empty response".into());
     }
 
-    display_command(&command);
+    let display_lines = display_command(&command);
 
-    let confirmed = confirm_execution()?;
+    let confirmed = confirm_execution(display_lines)?;
     if !confirmed {
         return Ok(());
     }
@@ -396,6 +396,22 @@ async fn process_command_single(
 
 fn execute_interactive_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
     let trimmed = command.trim();
+
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+
+    // for multiline commands, always execute via shell
+    if command.contains('\n') {
+        Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .current_dir(std::env::current_dir()?)
+            .status()?;
+        return Ok(());
+    }
+
+    // for single-line commands, check for shell built-ins
     let parts: Vec<&str> = trimmed.split_whitespace().collect();
 
     if parts.is_empty() {

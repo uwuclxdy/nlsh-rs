@@ -1,11 +1,33 @@
 use colored::*;
-use std::io::{self, IsTerminal, Read, stdin};
+use std::{
+    io::{self, IsTerminal, Read, stdin},
+    ops::Add,
+};
 
-pub fn display_command(command: &str) {
-    eprintln!("{} {}", "→".cyan(), command.bright_white().bold());
+pub fn display_command(command: &str) -> usize {
+    let lines: Vec<&str> = command.lines().collect();
+    let line_count = lines.len();
+    if line_count == 1 {
+        eprintln!("{} {}", "→".cyan(), command.bright_white().bold());
+        1
+    } else {
+        eprintln!(
+            "{} {}",
+            "→".cyan(),
+            "multiline command:".bright_white().bold()
+        );
+        for (i, line) in lines.iter().enumerate() {
+            eprintln!(
+                "{} {}",
+                (i + 1).to_string().add(".").cyan(),
+                line.bright_white()
+            );
+        }
+        line_count + 1 // header + command lines
+    }
 }
 
-pub fn confirm_execution() -> Result<bool, io::Error> {
+pub fn confirm_execution(display_lines: usize) -> Result<bool, io::Error> {
     if !stdin().is_terminal() {
         return Ok(true);
     }
@@ -54,7 +76,15 @@ pub fn confirm_execution() -> Result<bool, io::Error> {
 
     match result {
         Ok(true) => eprint!("\r\x1b[K"), // clear prompt line only, keep command visible
-        Ok(false) => eprint!("\r\x1b[K\x1b[1A\x1b[K\x1b[?25h"), // clear prompt and command on cancel
+        Ok(false) => {
+            // clear prompt line
+            eprint!("\r\x1b[K");
+            // clear all command display lines
+            for _ in 0..display_lines {
+                eprint!("\x1b[1A\x1b[K");
+            }
+            eprint!("\x1b[?25h");
+        }
         Err(_) => {}
     }
 

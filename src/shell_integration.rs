@@ -64,10 +64,11 @@ pub fn generate_bash_function() -> &'static str {
     local exit_code=$?
     if [ $exit_code -eq 0 ] && [ -n "$cmd" ]; then
         # avoid evaling help/error/config text and ANSI codes
-        if [[ "$cmd" =~ ^(Usage:|error:|Commands:|nlsh-rs\ [0-9]|$'\e'|$'\033'|✓|.*:$) ]] || [[ "$cmd" == *$'\n'* ]]; then
+        if [[ "$cmd" =~ ^(Usage:|error:|Commands:|nlsh-rs\ [0-9]|$'\e'|$'\033'|✓|.*:$) ]]; then
             echo "$cmd"
             return 0
         fi
+        # execute multiline or single line commands
         eval "$cmd"
     else
         return $exit_code
@@ -87,10 +88,11 @@ pub fn generate_fish_function() -> &'static str {
     set exit_code $status
     if test $exit_code -eq 0 -a -n "$cmd"
         # avoid evaling help/error/config text and ANSI codes
-        if string match -qr '^(Usage:|error:|Commands:|nlsh-rs [0-9]|\x1b|\e|✓|.*:$)' -- "$cmd"; or string match -q '*\n*' -- "$cmd"
+        if string match -qr '^(Usage:|error:|Commands:|nlsh-rs [0-9]|\x1b|\e|✓|.*:$)' -- "$cmd"
             echo "$cmd"
             return 0
         end
+        # execute multiline or single line commands
         eval $cmd
     else
         return $exit_code
