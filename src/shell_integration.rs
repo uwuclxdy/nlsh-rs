@@ -54,7 +54,6 @@ complete -c nlsh-rs -l version -d 'show version information'"#
 
 pub fn generate_bash_function() -> &'static str {
     r#"nlsh-rs() {
-    # if no arguments, run in interactive mode directly (don't capture output)
     if [ $# -eq 0 ]; then
         command nlsh-rs
         return $?
@@ -63,12 +62,10 @@ pub fn generate_bash_function() -> &'static str {
     local cmd=$(command nlsh-rs "$@")
     local exit_code=$?
     if [ $exit_code -eq 0 ] && [ -n "$cmd" ]; then
-        # avoid evaling help/error/config text and ANSI codes
         if [[ "$cmd" =~ ^(Usage:|error:|Commands:|nlsh-rs\ [0-9]|$'\e'|$'\033'|✓|.*:$) ]]; then
             echo "$cmd"
             return 0
         fi
-        # execute multiline or single line commands
         eval "$cmd"
     else
         return $exit_code
@@ -78,7 +75,6 @@ pub fn generate_bash_function() -> &'static str {
 
 pub fn generate_fish_function() -> &'static str {
     r#"function nlsh-rs
-    # if no arguments, run in interactive mode directly (don't capture output)
     if test (count $argv) -eq 0
         command nlsh-rs
         return $status
@@ -87,12 +83,10 @@ pub fn generate_fish_function() -> &'static str {
     set cmd (command nlsh-rs $argv)
     set exit_code $status
     if test $exit_code -eq 0 -a -n "$cmd"
-        # avoid evaling help/error/config text and ANSI codes
         if string match -qr '^(Usage:|error:|Commands:|nlsh-rs [0-9]|\x1b|\e|✓|.*:$)' -- "$cmd"
             echo "$cmd"
             return 0
         end
-        # execute multiline or single line commands
         eval $cmd
     else
         return $exit_code
@@ -101,10 +95,74 @@ end"#
 }
 
 pub fn auto_setup_shell_function() -> Result<bool, Box<dyn std::error::Error>> {
+    verify_and_fix_integrations()?;
     let bash_added = setup_bash_integration()?;
     let fish_added = setup_fish_integration()?;
     let autocomplete_added = setup_autocomplete()?;
     Ok(bash_added || fish_added || autocomplete_added)
+}
+
+fn verify_and_fix_integrations() -> Result<(), Box<dyn std::error::Error>> {
+    verify_and_fix_bash_integration()?;
+    verify_and_fix_fish_integration()?;
+    Ok(())
+}
+
+fn verify_and_fix_bash_integration() -> Result<(), Box<dyn std::error::Error>> {
+    let home = match std::env::var("HOME") {
+        Ok(h) => PathBuf::from(h),
+        Err(_) => return Ok(()),
+    };
+
+    let bashrc_path = home.join(".bashrc");
+
+    if !bashrc_path.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&bashrc_path)?;
+
+    // check if integration exists
+    if !content.contains("nlsh-rs()") {
+        return Ok(());
+    }
+
+    // extract the function and verify it matches
+    let expected_function = generate_bash_function();
+
+    if !content.contains(expected_function) {
+        // function exists but doesn't match - remove and reinstall
+        remove_bash_integration()?;
+        setup_bash_integration()?;
+    }
+
+    Ok(())
+}
+
+fn verify_and_fix_fish_integration() -> Result<(), Box<dyn std::error::Error>> {
+    let home = match std::env::var("HOME") {
+        Ok(h) => PathBuf::from(h),
+        Err(_) => return Ok(()),
+    };
+
+    let fish_function_path = home.join(".config/fish/functions/nlsh-rs.fish");
+
+    if !fish_function_path.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&fish_function_path)?;
+
+    // verify the function matches expected content
+    let expected_function = generate_fish_function();
+
+    if !content.contains(expected_function) {
+        // function exists but doesn't match - remove and reinstall
+        remove_fish_integration()?;
+        setup_fish_integration()?;
+    }
+
+    Ok(())
 }
 
 fn setup_bash_integration() -> Result<bool, Box<dyn std::error::Error>> {
@@ -186,6 +244,8 @@ pub fn remove_bash_integration() -> Result<bool, Box<dyn std::error::Error>> {
     let lines: Vec<&str> = content.lines().collect();
     let mut new_lines = Vec::new();
     let mut skip = false;
+    let mut brace_depth = 0;
+    let mut in_function = false;
     let mut found = false;
 
     for line in lines {
@@ -196,9 +256,22 @@ pub fn remove_bash_integration() -> Result<bool, Box<dyn std::error::Error>> {
         }
 
         if skip {
-            if line.trim() == "}" {
-                skip = false;
-                continue;
+            // detect start of nlsh-rs function
+            if !in_function && (line.contains("nlsh-rs() {") || line.contains("nlsh-rs()")) {
+                in_function = true;
+                // count opening braces on this line
+                brace_depth += line.matches('{').count() as i32;
+            } else if in_function {
+                // count braces while inside function
+                brace_depth += line.matches('{').count() as i32;
+                brace_depth -= line.matches('}').count() as i32;
+
+                // if brace depth returns to 0, we found the closing brace
+                if brace_depth == 0 {
+                    skip = false;
+                    in_function = false;
+                    continue;
+                }
             }
             continue;
         }
