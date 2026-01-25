@@ -12,14 +12,14 @@ Describe what you want, get the command!
 
 ## Installation
 
+from crates.io **(recommended)**:
+```bash
+cargo install nlsh-rs
+```
+
 latest commit:
 ```bash
 curl -sSL https://raw.githubusercontent.com/uwuclxdy/nlsh-rs/main/install.sh | sh
-```
-
-from crates.io:
-```bash
-cargo install nlsh-rs
 ```
 
 ## Setup
