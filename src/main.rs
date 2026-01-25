@@ -5,6 +5,7 @@ mod interactive;
 mod prompt;
 mod providers;
 mod shell_integration;
+mod update_checker;
 
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -179,6 +180,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::io::stderr().is_terminal() {
         colored::control::set_override(true);
     }
+
+    update_checker::check_for_updates().await;
 
     tokio::spawn(async {
         tokio::signal::ctrl_c()
