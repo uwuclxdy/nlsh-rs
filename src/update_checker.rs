@@ -48,7 +48,7 @@ async fn check_update_internal() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!(
             "{} {}",
             "update found, please run".dimmed(),
-            format!("`cargo update nlsh-rs`").cyan()
+            "`cargo update nlsh-rs`".to_string().cyan()
         );
     }
 
