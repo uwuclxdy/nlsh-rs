@@ -15,6 +15,7 @@ use error::NlshError;
 use interactive::get_user_input;
 use std::io::{self, IsTerminal};
 use std::process::Command;
+use tokio_util::sync::CancellationToken;
 
 #[cfg(unix)]
 fn setup_terminal() {
@@ -183,14 +184,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     update_checker::check_for_updates().await;
 
-    tokio::spawn(async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to listen for ctrl+c");
-        eprintln!();
-        std::process::exit(0);
-    });
-
     match shell_integration::auto_setup_shell_function() {
         Ok(true) => {
             eprintln!(
@@ -246,31 +239,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interactive_mode = cli.command.is_empty();
 
     if interactive_mode {
-        // interactive mode: keep running until ctrl+c
+        // interactive mode: keep running until ctrl+c at prompt
         loop {
             let user_input = match get_user_input()? {
                 Some(input) => input,
                 None => continue,
             };
 
-            if let Err(e) = process_command(&user_input, provider.as_ref(), &config, true).await {
+            if let Err(e) =
+                process_command_interactive(&user_input, provider.as_ref(), &config).await
+                && !e.to_string().contains("cancelled")
+            {
                 display_error(&e.to_string());
             }
         }
     } else {
         // single-command mode: execute once and exit
         let user_input = cli.command.join(" ");
-        process_command(&user_input, provider.as_ref(), &config, false).await?;
+        process_command_single(&user_input, provider.as_ref(), &config).await?;
     }
 
     Ok(())
 }
 
-async fn process_command(
+async fn process_command_interactive(
     user_input: &str,
     provider: &dyn providers::AIProvider,
     config: &config::Config,
-    is_interactive: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let model_name = get_model_name(config);
     eprint!(
@@ -280,6 +275,85 @@ async fn process_command(
     let _ = io::Write::flush(&mut io::stderr());
 
     let prompt = prompt::create_system_prompt(user_input);
+
+    let cancel_token = CancellationToken::new();
+    let cancel_clone = cancel_token.clone();
+
+    // spawn task to listen for Ctrl+C during request
+    let ctrl_c_task = tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        cancel_clone.cancel();
+    });
+
+    let response = tokio::select! {
+        result = provider.generate(&prompt) => {
+            ctrl_c_task.abort();
+            match result {
+                Ok(res) => res,
+                Err(e) => {
+                    eprint!("\r{}\r", " ".repeat(50));
+                    let _ = io::Write::flush(&mut io::stderr());
+                    return Err(Box::new(e));
+                }
+            }
+        }
+        _ = cancel_token.cancelled() => {
+            eprint!("\r{}\r", " ".repeat(50));
+            let _ = io::Write::flush(&mut io::stderr());
+            return Err("request cancelled".into());
+        }
+    };
+
+    eprint!("\r{}\r", " ".repeat(50));
+    let _ = io::Write::flush(&mut io::stderr());
+
+    let command = prompt::clean_response(&response);
+
+    if command.trim().is_empty() {
+        display_error("failed to generate a valid command.");
+        eprintln!(
+            "{}",
+            "the AI returned an empty response. please try again.".yellow()
+        );
+        return Err("empty response".into());
+    }
+
+    display_command(&command);
+
+    let confirmed = confirm_execution()?;
+    if !confirmed {
+        return Ok(());
+    }
+
+    execute_interactive_command(&command)?;
+
+    Ok(())
+}
+
+async fn process_command_single(
+    user_input: &str,
+    provider: &dyn providers::AIProvider,
+    config: &config::Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let model_name = get_model_name(config);
+    eprint!(
+        "{}",
+        format!("using {}...", model_name).truecolor(128, 128, 128)
+    );
+    let _ = io::Write::flush(&mut io::stderr());
+
+    let prompt = prompt::create_system_prompt(user_input);
+
+    let cancel_token = CancellationToken::new();
+    let cancel_clone = cancel_token.clone();
+
+    // spawn task to listen for Ctrl+C
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        cancel_clone.cancel();
+        eprintln!();
+        std::process::exit(130);
+    });
 
     let response = match provider.generate(&prompt).await {
         Ok(res) => res,
@@ -311,12 +385,8 @@ async fn process_command(
         return Ok(());
     }
 
-    if is_interactive {
-        execute_interactive_command(&command)?;
-    } else {
-        // in single-command mode, print for shell wrapper to execute
-        println!("{}", command);
-    }
+    // in single-command mode, print for shell wrapper to execute
+    println!("{}", command);
 
     Ok(())
 }
