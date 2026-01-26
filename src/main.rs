@@ -1,3 +1,4 @@
+mod common;
 mod config;
 mod config_migration;
 mod confirmation;
@@ -9,6 +10,10 @@ mod shell_integration;
 
 use clap::{Parser, Subcommand};
 use colored::*;
+use common::{
+    exit_with_code, expand_home, handle_interrupt, setup_interrupt_handler, setup_terminal,
+    show_cursor,
+};
 use confirmation::{confirm_execution, display_command, display_error};
 use dialoguer::Confirm;
 use error::NlshError;
@@ -16,40 +21,6 @@ use interactive::get_user_input;
 use std::io::{self, IsTerminal};
 use std::process::Command;
 use tokio_util::sync::CancellationToken;
-
-fn exit_with_code(code: i32) -> ! {
-    std::process::exit(code);
-}
-
-#[cfg(unix)]
-fn setup_terminal() {
-    use std::os::unix::io::AsRawFd;
-    unsafe {
-        let mut termios: libc::termios = std::mem::zeroed();
-        if libc::tcgetattr(std::io::stdin().as_raw_fd(), &mut termios) == 0 {
-            termios.c_lflag &= !libc::ECHOCTL;
-            libc::tcsetattr(std::io::stdin().as_raw_fd(), libc::TCSANOW, &termios);
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn setup_terminal() {
-    // no-op on non-unix systems
-}
-
-fn handle_interrupt<T>(
-    result: Result<T, dialoguer::Error>,
-) -> Result<T, Box<dyn std::error::Error>> {
-    match result {
-        Ok(val) => Ok(val),
-        Err(dialoguer::Error::IO(e)) if e.kind() == io::ErrorKind::Interrupted => {
-            eprint!("\x1b[?25h");
-            exit_with_code(130);
-        }
-        Err(e) => Err(Box::new(e)),
-    }
-}
 
 fn get_model_name(config: &config::Config) -> String {
     let provider = config.get_provider_config();
@@ -75,9 +46,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// configure API provider (Gemini, Ollama, LM Studio, OpenAI)
     Api,
-    /// uninstall nlsh-rs
     Uninstall,
 }
 
@@ -123,7 +92,7 @@ fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     eprintln!();
-    eprint!("\x1b[?25h");
+    show_cursor();
     let _ = io::Write::flush(&mut io::stderr());
     let remove_config = handle_interrupt(
         Confirm::new()
@@ -152,7 +121,7 @@ fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
         let contents = std::fs::read_to_string(&cargo_toml)?;
         if contents.contains("name = \"nlsh-rs\"") {
             eprintln!();
-            eprint!("\x1b[?25h"); // show cursor
+            show_cursor(); // show cursor
             let _ = io::Write::flush(&mut io::stderr());
             let remove_repo = handle_interrupt(
                 Confirm::new()
@@ -182,6 +151,7 @@ fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_terminal();
+    setup_interrupt_handler();
 
     if std::io::stderr().is_terminal() {
         colored::control::set_override(true);
@@ -425,13 +395,8 @@ fn execute_interactive_command(command: &str) -> Result<(), Box<dyn std::error::
 
             let target_dir = if path.is_empty() {
                 std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
-            } else if path == "~" {
-                std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
-            } else if let Some(rest) = path.strip_prefix("~/") {
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
-                format!("{}/{}", home, rest)
             } else {
-                path.to_string()
+                expand_home(path)
             };
 
             std::env::set_current_dir(&target_dir)?;

@@ -54,7 +54,7 @@ pub fn migrate_config(config_path: &Path) -> Result<bool, Box<dyn std::error::Er
         if migrator.can_migrate(&content) {
             let new_content = migrator.migrate(&content)?;
             fs::write(config_path, new_content)?;
-            crate::config::set_config_permissions(&config_path.to_path_buf())?;
+            crate::common::set_file_permissions(config_path)?;
             return Ok(true);
         }
     }

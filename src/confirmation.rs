@@ -1,3 +1,4 @@
+use crate::common::show_cursor;
 use colored::*;
 use std::{
     io::{self, IsTerminal, Read, stdin},
@@ -83,7 +84,7 @@ pub fn confirm_execution(display_lines: usize) -> Result<bool, io::Error> {
             for _ in 0..display_lines {
                 eprint!("\x1b[1A\x1b[K");
             }
-            eprint!("\x1b[?25h");
+            show_cursor();
         }
         Err(_) => {}
     }

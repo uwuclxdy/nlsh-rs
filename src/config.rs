@@ -1,22 +1,10 @@
+use crate::common::handle_interrupt;
+use crate::common::set_file_permissions;
 use colored::*;
 use dialoguer::{Input, Select};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io;
 use std::path::PathBuf;
-
-fn handle_interrupt<T>(
-    result: Result<T, dialoguer::Error>,
-) -> Result<T, Box<dyn std::error::Error>> {
-    match result {
-        Ok(val) => Ok(val),
-        Err(dialoguer::Error::IO(e)) if e.kind() == io::ErrorKind::Interrupted => {
-            eprint!("\x1b[?25h");
-            std::process::exit(130);
-        }
-        Err(e) => Err(Box::new(e)),
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
@@ -119,18 +107,6 @@ fn get_config_path() -> PathBuf {
     config_dir.join("config.toml")
 }
 
-pub(crate) fn set_config_permissions(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let metadata = fs::metadata(path)?;
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(0o600);
-        fs::set_permissions(path, permissions)?;
-    }
-    Ok(())
-}
-
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     let config_path = get_config_path();
     let contents = fs::read_to_string(&config_path)?;
@@ -152,7 +128,7 @@ pub fn save_config(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let config_path = get_config_path();
     let toml_string = toml::to_string_pretty(config)?;
     fs::write(&config_path, toml_string)?;
-    set_config_permissions(&config_path)?;
+    set_file_permissions(&config_path)?;
     Ok(())
 }
 
@@ -324,9 +300,8 @@ fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
         Some(api_key)
     };
 
-    let model: String = Input::new()
-        .with_prompt("Enter model name")
-        .interact_text()?;
+    let model: String =
+        handle_interrupt(Input::new().with_prompt("Enter model name").interact_text())?;
 
     Ok(ProviderConfig {
         provider_type: "openai".to_string(),
