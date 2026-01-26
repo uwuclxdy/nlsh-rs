@@ -17,7 +17,7 @@ pub fn get_user_input() -> Result<Option<String>, io::Error> {
         "{}:{}{} ",
         "nlsh-rs".cyan().bold(),
         cwd.custom_color((164, 164, 164)).bold(),
-        "$".bold()
+        ">".bold()
     );
 
     match editor.readline(&prompt) {

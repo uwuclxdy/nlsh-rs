@@ -1,28 +1,21 @@
 use crate::common::show_cursor;
 use colored::*;
-use std::{
-    io::{self, IsTerminal, Read, stdin},
-    ops::Add,
-};
+use std::io::{self, IsTerminal, Read, stdin};
 
 pub fn display_command(command: &str) -> usize {
     let lines: Vec<&str> = command.lines().collect();
     let line_count = lines.len();
     if line_count == 1 {
-        eprintln!("{} {}", "→".cyan(), command.bright_white().bold());
+        eprintln!("{} {}", "$".cyan(), command.bright_white().bold());
         1
     } else {
         eprintln!(
             "{} {}",
-            "→".cyan(),
+            ">".cyan(),
             "multiline command:".bright_white().bold()
         );
-        for (i, line) in lines.iter().enumerate() {
-            eprintln!(
-                "{} {}",
-                (i + 1).to_string().add(".").cyan(),
-                line.bright_white()
-            );
+        for line in lines.iter() {
+            eprintln!("{} {}", "$".cyan(), line.bright_white());
         }
         line_count + 1 // header + command lines
     }
