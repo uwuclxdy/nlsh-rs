@@ -12,9 +12,8 @@ pub fn create_system_prompt(user_request: &str) -> String {
 
 Environment context:
 - Current dir: {}
-- Home dir: {}
+- Home dir: {:?}
 - User: {}
-- OS: {}
 - Shell: {}
 
 Rules:
@@ -22,12 +21,12 @@ Rules:
 - No explanations, no markdown, no backticks
 - If unclear, make a reasonable assumption
 - Prefer simple, common commands
-- Use appropriate shell syntax for {} ({})
+- Use appropriate shell syntax and commands for this environment
 - Consider the current directory context when generating paths
 - Use ~ for home directory when appropriate
 
 User request: {}",
-        os, cwd, home, user, os, shell, os, shell, user_request
+        os, cwd, home, user, shell, user_request
     )
 }
 
