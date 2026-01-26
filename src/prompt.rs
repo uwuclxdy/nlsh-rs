@@ -1,10 +1,10 @@
-use crate::common::{get_current_directory, get_home_directory, get_os, get_shell, get_username};
+use crate::common::{get_current_directory, get_os, get_shell, get_username};
 
 pub fn create_system_prompt(user_request: &str) -> String {
     let cwd = get_current_directory();
     let os = get_os();
     let shell = get_shell();
-    let home = get_home_directory();
+    let home = dirs::home_dir();
     let user = get_username();
 
     format!(

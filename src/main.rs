@@ -1,3 +1,4 @@
+mod cli;
 mod common;
 mod config;
 mod config_migration;
@@ -7,19 +8,13 @@ mod interactive;
 mod prompt;
 mod providers;
 mod shell_integration;
-
-use clap::{Parser, Subcommand};
+mod uninstall;
 use colored::*;
-use common::{
-    exit_with_code, expand_home, handle_interrupt, setup_interrupt_handler, setup_terminal,
-    show_cursor,
-};
-use confirmation::{confirm_execution, display_command, display_error};
-use dialoguer::Confirm;
+use common::{exit_with_code, setup_interrupt_handler, setup_terminal};
+use confirmation::{display_command, display_error};
 use error::NlshError;
 use interactive::get_user_input;
 use std::io::{self, IsTerminal};
-use std::process::Command;
 use tokio_util::sync::CancellationToken;
 
 fn get_model_name(config: &config::Config) -> String {
@@ -29,123 +24,6 @@ fn get_model_name(config: &config::Config) -> String {
         config::ProviderSpecificConfig::Ollama { ollama } => ollama.model.clone(),
         config::ProviderSpecificConfig::OpenAI { openai } => openai.model.clone(),
     }
-}
-
-#[derive(Parser)]
-#[command(name = "nlsh-rs")]
-#[command(version)]
-#[command(disable_help_subcommand = true)]
-struct Cli {
-    /// natural language command to translate (optional - if omitted, enters interactive mode)
-    #[arg(value_name = "COMMAND")]
-    command: Vec<String>,
-
-    #[command(subcommand)]
-    subcommand: Option<Commands>,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    Api,
-    Uninstall,
-}
-
-fn uninstall() -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("{}", "uninstalling nlsh-rs...".yellow().bold());
-    eprintln!();
-
-    match shell_integration::remove_shell_integration() {
-        Ok(true) => {
-            eprintln!("{}", "✓ removed shell integration".green());
-        }
-        Ok(false) => {
-            eprintln!("{}", "  no shell integration found".dimmed());
-        }
-        Err(e) => {
-            eprintln!(
-                "{} failed to remove shell integration: {}",
-                "warning:".yellow(),
-                e
-            );
-        }
-    }
-
-    eprintln!("{}", "  uninstalling cargo crate...".dimmed());
-    let output = Command::new("cargo")
-        .args(["uninstall", "nlsh-rs"])
-        .output()?;
-
-    if output.status.success() {
-        eprintln!("{}", "✓ uninstalled cargo crate".green());
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("package 'nlsh-rs' is not installed") || stderr.contains("not installed")
-        {
-            eprintln!("{}", "  cargo crate not installed".dimmed());
-        } else {
-            eprintln!(
-                "{} failed to uninstall: {}",
-                "warning:".yellow(),
-                stderr.trim()
-            );
-        }
-    }
-
-    eprintln!();
-    show_cursor();
-    let _ = io::Write::flush(&mut io::stderr());
-    let remove_config = handle_interrupt(
-        Confirm::new()
-            .with_prompt("remove configuration?")
-            .default(false)
-            .interact(),
-    )?;
-
-    if remove_config {
-        let config_dir = dirs::config_dir()
-            .ok_or("failed to get config directory")?
-            .join("nlsh-rs");
-
-        if config_dir.exists() {
-            std::fs::remove_dir_all(&config_dir)?;
-            eprintln!("{}", "✓ removed configuration".green());
-        } else {
-            eprintln!("{}", "  no configuration found".dimmed());
-        }
-    }
-
-    let current_dir = std::env::current_dir()?;
-    let cargo_toml = current_dir.join("Cargo.toml");
-
-    if cargo_toml.exists() {
-        let contents = std::fs::read_to_string(&cargo_toml)?;
-        if contents.contains("name = \"nlsh-rs\"") {
-            eprintln!();
-            show_cursor(); // show cursor
-            let _ = io::Write::flush(&mut io::stderr());
-            let remove_repo = handle_interrupt(
-                Confirm::new()
-                    .with_prompt("remove current directory (nlsh-rs repository)?")
-                    .default(false)
-                    .interact(),
-            )?;
-
-            if remove_repo {
-                eprintln!("{}", "  removing directory...".dimmed());
-                let parent = current_dir.parent().ok_or("cannot remove root directory")?;
-                std::env::set_current_dir(parent)?;
-
-                std::fs::remove_dir_all(&current_dir)?;
-                eprintln!("{}", "✓ removed nlsh-rs repository".green());
-            }
-        }
-    }
-
-    eprintln!();
-    eprintln!("{}", "nlsh-rs uninstalled successfully!".green().bold());
-    eprintln!("{}", "please restart your shell or run 'source ~/.bashrc' (or 'source ~/.config/fish/config.fish' for fish).".yellow());
-
-    Ok(())
 }
 
 #[tokio::main]
@@ -169,16 +47,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(_) => {}
     }
 
-    let cli = Cli::parse();
+    let cli = cli::parse_cli_args()?;
 
     if let Some(command) = cli.subcommand {
         match command {
-            Commands::Api => {
+            cli::Subcommands::Api => {
                 config::interactive_setup()?;
                 return Ok(());
             }
-            Commands::Uninstall => {
-                uninstall()?;
+            cli::Subcommands::Uninstall => {
+                uninstall::uninstall_nlsh()?;
                 return Ok(());
             }
         }
@@ -293,12 +171,12 @@ async fn process_command_interactive(
 
     let display_lines = display_command(&command);
 
-    let confirmed = confirm_execution(display_lines)?;
+    let confirmed = confirmation::confirm_execution(display_lines)?;
     if !confirmed {
         return Ok(());
     }
 
-    execute_interactive_command(&command)?;
+    cli::execute_shell_command(&command)?;
 
     Ok(())
 }
@@ -353,83 +231,13 @@ async fn process_command_single(
 
     let display_lines = display_command(&command);
 
-    let confirmed = confirm_execution(display_lines)?;
+    let confirmed = confirmation::confirm_execution(display_lines)?;
     if !confirmed {
         return Ok(());
     }
 
     // in single-command mode, print for shell wrapper to execute
     println!("{}", command);
-
-    Ok(())
-}
-
-fn execute_interactive_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let trimmed = command.trim();
-
-    if trimmed.is_empty() {
-        return Ok(());
-    }
-
-    // for multiline commands, always execute via shell
-    if command.contains('\n') {
-        Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .current_dir(std::env::current_dir()?)
-            .status()?;
-        return Ok(());
-    }
-
-    // for single-line commands, check for shell built-ins
-    let parts: Vec<&str> = trimmed.split_whitespace().collect();
-
-    if parts.is_empty() {
-        return Ok(());
-    }
-
-    // handle shell built-ins that affect process state
-    match parts[0] {
-        "cd" => {
-            let path = if parts.len() > 1 { parts[1] } else { "" };
-
-            let target_dir = if path.is_empty() {
-                std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
-            } else {
-                expand_home(path)
-            };
-
-            std::env::set_current_dir(&target_dir)?;
-        }
-        "export" => {
-            // handle export VAR=value
-            if parts.len() > 1 {
-                for part in &parts[1..] {
-                    if let Some((key, value)) = part.split_once('=') {
-                        unsafe {
-                            std::env::set_var(key, value);
-                        }
-                    }
-                }
-            }
-        }
-        "unset" => {
-            // handle unset VAR
-            for var in &parts[1..] {
-                unsafe {
-                    std::env::remove_var(var);
-                }
-            }
-        }
-        _ => {
-            // execute external commands in subprocess with inherited state
-            Command::new("sh")
-                .arg("-c")
-                .arg(command)
-                .current_dir(std::env::current_dir()?)
-                .status()?;
-        }
-    }
 
     Ok(())
 }

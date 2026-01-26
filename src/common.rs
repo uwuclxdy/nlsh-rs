@@ -93,13 +93,6 @@ pub fn get_shell() -> String {
         .unwrap_or_else(|| "sh".to_string())
 }
 
-/// returns the home directory path.
-pub fn get_home_directory() -> String {
-    env::var("HOME")
-        .or_else(|_| env::var("USERPROFILE"))
-        .unwrap_or_else(|_| "~".to_string())
-}
-
 /// returns the current username.
 pub fn get_username() -> String {
     env::var("USER")
@@ -110,17 +103,6 @@ pub fn get_username() -> String {
 // ====================
 // process & execution helpers
 // ====================
-
-/// expands ~ to home directory in a path.
-pub fn expand_home(path: &str) -> String {
-    if path == "~" {
-        get_home_directory()
-    } else if let Some(rest) = path.strip_prefix("~/") {
-        format!("{}/{}", get_home_directory(), rest)
-    } else {
-        path.to_string()
-    }
-}
 
 fn get_linux_info() -> String {
     let distro = get_linux_distro();

@@ -1,7 +1,6 @@
-use crate::common::handle_interrupt;
+use crate::cli;
 use crate::common::set_file_permissions;
 use colored::*;
-use dialoguer::{Input, Select};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -153,13 +152,7 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    let selection = handle_interrupt(
-        Select::new()
-            .with_prompt("Select API Provider")
-            .items(&colored_providers)
-            .default(0)
-            .interact(),
-    )?;
+    let selection = cli::prompt_select("Select API Provider", &colored_providers, 0)?;
 
     let mut multi_providers = existing_config
         .as_ref()
@@ -174,12 +167,7 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let has_saved = if has_saved_creds && Some(providers[selection].1) != current_provider {
-        handle_interrupt(
-            dialoguer::Confirm::new()
-                .with_prompt("use saved credentials?")
-                .default(true)
-                .interact(),
-        )?
+        cli::prompt_confirm("use saved credentials?", true)?
     } else {
         false
     };
@@ -239,18 +227,9 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let api_key: String = handle_interrupt(
-        Input::new()
-            .with_prompt("Enter your Gemini API key")
-            .interact_text(),
-    )?;
+    let api_key = cli::prompt_input("Enter your Gemini API key")?;
 
-    let model: String = handle_interrupt(
-        Input::new()
-            .with_prompt("Enter model name")
-            .default("gemini-2.5-flash".to_string())
-            .interact_text(),
-    )?;
+    let model = cli::prompt_input_with_default("Enter model name", "gemini-2.5-flash")?;
 
     Ok(ProviderConfig {
         provider_type: "gemini".to_string(),
@@ -261,15 +240,10 @@ fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
 }
 
 fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let base_url: String = handle_interrupt(
-        Input::new()
-            .with_prompt("Enter Ollama base URL")
-            .default("http://localhost:11434".to_string())
-            .interact_text(),
-    )?;
+    let base_url =
+        cli::prompt_input_with_default("Enter Ollama base URL", "http://localhost:11434")?;
 
-    let model: String =
-        handle_interrupt(Input::new().with_prompt("Enter model name").interact_text())?;
+    let model = cli::prompt_input("Enter model name")?;
 
     Ok(ProviderConfig {
         provider_type: "ollama".to_string(),
@@ -280,18 +254,11 @@ fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
 }
 
 fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let base_url: String = handle_interrupt(
-        Input::new()
-            .with_prompt("Enter API base URL")
-            .default("https://api.openai.com/v1".to_string())
-            .interact_text(),
-    )?;
+    let base_url =
+        cli::prompt_input_with_default("Enter API base URL", "https://api.openai.com/v1")?;
 
-    let api_key: String = handle_interrupt(
-        Input::new()
-            .with_prompt("Enter API key (leave empty for local servers like LM Studio)")
-            .allow_empty(true)
-            .interact_text(),
+    let api_key = cli::prompt_input_allow_empty(
+        "Enter API key (leave empty for local servers like LM Studio)",
     )?;
 
     let api_key = if api_key.is_empty() {
@@ -300,8 +267,7 @@ fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
         Some(api_key)
     };
 
-    let model: String =
-        handle_interrupt(Input::new().with_prompt("Enter model name").interact_text())?;
+    let model = cli::prompt_input("Enter model name")?;
 
     Ok(ProviderConfig {
         provider_type: "openai".to_string(),
