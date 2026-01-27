@@ -1,10 +1,10 @@
-use crate::common::get_current_directory;
-use crate::common::show_cursor;
 use colored::*;
 use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
 use std::io;
 use std::sync::Mutex;
+
+use crate::common::{exit_with_code, get_current_directory, show_cursor};
 
 static EDITOR: Mutex<Option<DefaultEditor>> = Mutex::new(None);
 
@@ -32,11 +32,11 @@ pub fn get_user_input() -> Result<Option<String>, io::Error> {
         }
         Err(ReadlineError::Interrupted) => {
             show_cursor();
-            std::process::exit(130);
+            exit_with_code(130);
         }
         Err(ReadlineError::Eof) => {
             show_cursor();
-            std::process::exit(0);
+            exit_with_code(0);
         }
         Err(err) => Err(io::Error::other(err)),
     }

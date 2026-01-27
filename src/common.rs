@@ -21,8 +21,8 @@ pub fn setup_interrupt_handler() {
     #[allow(clippy::missing_safety_doc, clippy::fn_to_numeric_cast)]
     unsafe {
         extern "C" fn handle_sigint(_: libc::c_int) {
-            eprint!("\x1b[?25h");
-            let _ = io::Write::flush(&mut io::stderr());
+            show_cursor();
+            flush_stderr();
             // use _exit to avoid running destructors which might hang
             unsafe {
                 libc::_exit(130);
@@ -46,7 +46,7 @@ pub fn handle_interrupt<T>(
         Ok(val) => Ok(val),
         Err(dialoguer::Error::IO(e)) => {
             // show cursor on any io error
-            eprint!("\x1b[?25h");
+            show_cursor();
 
             // exit on interrupted or not connected errors
             if e.kind() == io::ErrorKind::Interrupted
@@ -104,6 +104,7 @@ pub fn get_username() -> String {
 // process & execution helpers
 // ====================
 
+/// returns linux distro and kernel version.
 fn get_linux_info() -> String {
     let distro = get_linux_distro();
     let kernel = get_kernel_version();
@@ -111,6 +112,7 @@ fn get_linux_info() -> String {
     format!("linux ({}; kernel: {})", distro, kernel)
 }
 
+/// reads /etc/os-release to get the distro name and version.
 fn get_linux_distro() -> String {
     if let Ok(contents) = fs::read_to_string("/etc/os-release") {
         let mut name = None;
@@ -134,6 +136,7 @@ fn get_linux_distro() -> String {
     }
 }
 
+/// gets the kernel version from `uname -r` or `/proc/sys/kernel/osrelease`.
 fn get_kernel_version() -> String {
     Command::new("uname")
         .arg("-r")
@@ -144,6 +147,47 @@ fn get_kernel_version() -> String {
         .or_else(|| fs::read_to_string("/proc/sys/kernel/osrelease").ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+// ====================
+// terminal control helpers
+// ====================
+
+/// shows the cursor on stderr.
+pub fn show_cursor() {
+    eprint!("\x1b[?25h");
+    flush_stderr();
+}
+
+/// clears the current line on stderr (from cursor to end of line).
+pub fn clear_line() {
+    eprint!("\r\x1b[K");
+    flush_stderr();
+}
+
+/// clears current line by filling it with spaces and returning to start.
+pub fn clear_line_with_spaces(width: usize) {
+    eprint!("\r{}\r", " ".repeat(width));
+    flush_stderr();
+}
+
+/// clears the current line and moves cursor up by the specified number of lines.
+pub fn clear_lines(count: usize) {
+    for _ in 0..count {
+        eprint!("\x1b[1A\x1b[K");
+    }
+    flush_stderr();
+}
+
+/// prints a message to stderr and flushes immediately.
+pub fn eprint_flush(msg: &str) {
+    eprint!("{}", msg);
+    flush_stderr();
+}
+
+/// flushes stderr to ensure output is displayed.
+pub fn flush_stderr() {
+    let _ = io::Write::flush(&mut io::stderr());
 }
 
 // ====================
@@ -171,12 +215,6 @@ pub fn setup_terminal() {
 #[cfg(not(unix))]
 pub fn setup_terminal() {
     // no-op on non-unix systems
-}
-
-/// shows the cursor on stderr.
-pub fn show_cursor() {
-    eprint!("\x1b[?25h");
-    let _ = io::Write::flush(&mut io::stderr());
 }
 
 // ====================

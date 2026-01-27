@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+use crate::common::set_file_permissions;
+use crate::config::{Config, MultiProviderConfig};
+
 #[derive(Debug, Serialize, Deserialize)]
 struct V1ProviderSection {
     #[serde(rename = "type")]
@@ -12,7 +15,7 @@ struct V1ProviderSection {
 struct V1Config {
     provider: V1ProviderSection,
     #[serde(default)]
-    providers: crate::config::MultiProviderConfig,
+    providers: MultiProviderConfig,
 }
 
 type MigrationResult = Result<String, Box<dyn std::error::Error>>;
@@ -32,7 +35,7 @@ impl Migrator for V1ToV2Migrator {
     fn migrate(&self, content: &str) -> MigrationResult {
         let old_config: V1Config = toml::from_str(content)?;
 
-        let new_config = crate::config::Config {
+        let new_config = Config {
             active_provider: old_config.provider.provider_type,
             providers: old_config.providers,
         };
@@ -54,7 +57,7 @@ pub fn migrate_config(config_path: &Path) -> Result<bool, Box<dyn std::error::Er
         if migrator.can_migrate(&content) {
             let new_content = migrator.migrate(&content)?;
             fs::write(config_path, new_content)?;
-            crate::common::set_file_permissions(config_path)?;
+            set_file_permissions(config_path)?;
             return Ok(true);
         }
     }

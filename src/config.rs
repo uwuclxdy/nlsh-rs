@@ -1,9 +1,14 @@
-use crate::cli;
-use crate::common::set_file_permissions;
 use colored::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+
+use crate::cli::{
+    print_check_with_bold_message, prompt_confirm, prompt_input, prompt_input_allow_empty,
+    prompt_input_with_default, prompt_select,
+};
+use crate::common::set_file_permissions;
+use crate::config_migration;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
@@ -99,10 +104,10 @@ pub struct OpenAIConfig {
 
 fn get_config_path() -> PathBuf {
     let config_dir = dirs::config_dir()
-        .expect("Failed to get config directory")
+        .expect("failed to get config directory")
         .join("nlsh-rs");
 
-    fs::create_dir_all(&config_dir).expect("Failed to create config directory");
+    fs::create_dir_all(&config_dir).expect("failed to create config directory");
     config_dir.join("config.toml")
 }
 
@@ -113,7 +118,7 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     match toml::from_str::<Config>(&contents) {
         Ok(config) => Ok(config),
         Err(e) => {
-            if crate::config_migration::migrate_config(&config_path)? {
+            if config_migration::migrate_config(&config_path)? {
                 let contents = fs::read_to_string(&config_path)?;
                 Ok(toml::from_str(&contents)?)
             } else {
@@ -152,7 +157,7 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    let selection = cli::prompt_select("Select API Provider", &colored_providers, 0)?;
+    let selection = prompt_select("Select API Provider", &colored_providers, 0)?;
 
     let mut multi_providers = existing_config
         .as_ref()
@@ -167,7 +172,7 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let has_saved = if has_saved_creds && Some(providers[selection].1) != current_provider {
-        cli::prompt_confirm("use saved credentials?", true)?
+        prompt_confirm("use saved credentials?", true)?
     } else {
         false
     };
@@ -204,7 +209,7 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
 
     save_config(&config)?;
 
-    eprintln!("{}", "✓ Configuration saved!".green().bold());
+    print_check_with_bold_message("Configuration saved!");
     eprintln!();
     eprintln!("Provider: {}", providers[selection].0);
 
@@ -227,9 +232,9 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let api_key = cli::prompt_input("Enter your Gemini API key")?;
+    let api_key = prompt_input("Enter your Gemini API key")?;
 
-    let model = cli::prompt_input_with_default("Enter model name", "gemini-2.5-flash")?;
+    let model = prompt_input_with_default("Enter model name", "gemini-2.5-flash")?;
 
     Ok(ProviderConfig {
         provider_type: "gemini".to_string(),
@@ -240,10 +245,9 @@ fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
 }
 
 fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let base_url =
-        cli::prompt_input_with_default("Enter Ollama base URL", "http://localhost:11434")?;
+    let base_url = prompt_input_with_default("Enter Ollama base URL", "http://localhost:11434")?;
 
-    let model = cli::prompt_input("Enter model name")?;
+    let model = prompt_input("Enter model name")?;
 
     Ok(ProviderConfig {
         provider_type: "ollama".to_string(),
@@ -254,12 +258,10 @@ fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
 }
 
 fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let base_url =
-        cli::prompt_input_with_default("Enter API base URL", "https://api.openai.com/v1")?;
+    let base_url = prompt_input_with_default("Enter API base URL", "https://api.openai.com/v1")?;
 
-    let api_key = cli::prompt_input_allow_empty(
-        "Enter API key (leave empty for local servers like LM Studio)",
-    )?;
+    let api_key =
+        prompt_input_allow_empty("Enter API key (leave empty for local servers like LM Studio)")?;
 
     let api_key = if api_key.is_empty() {
         None
@@ -267,7 +269,7 @@ fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
         Some(api_key)
     };
 
-    let model = cli::prompt_input("Enter model name")?;
+    let model = prompt_input("Enter model name")?;
 
     Ok(ProviderConfig {
         provider_type: "openai".to_string(),

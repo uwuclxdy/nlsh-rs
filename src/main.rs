@@ -9,20 +9,30 @@ mod prompt;
 mod providers;
 mod shell_integration;
 mod uninstall;
-use colored::*;
-use common::{exit_with_code, setup_interrupt_handler, setup_terminal};
-use confirmation::{display_command, display_error};
-use error::NlshError;
-use interactive::get_user_input;
-use std::io::{self, IsTerminal};
+
+use std::io::IsTerminal;
 use tokio_util::sync::CancellationToken;
 
-fn get_model_name(config: &config::Config) -> String {
+use cli::{execute_shell_command, parse_cli_args};
+use colored::*;
+use common::{
+    clear_line_with_spaces, eprint_flush, exit_with_code, setup_interrupt_handler, setup_terminal,
+};
+use config::{Config, ProviderSpecificConfig, interactive_setup, load_config};
+use confirmation::{confirm_execution, display_command, display_error};
+use error::NlshError;
+use interactive::get_user_input;
+use prompt::{clean_response, create_system_prompt};
+use providers::create_provider;
+use shell_integration::auto_setup_shell_function;
+use uninstall::uninstall_nlsh;
+
+fn get_model_name(config: &Config) -> String {
     let provider = config.get_provider_config();
     match &provider.config {
-        config::ProviderSpecificConfig::Gemini { gemini } => gemini.model.clone(),
-        config::ProviderSpecificConfig::Ollama { ollama } => ollama.model.clone(),
-        config::ProviderSpecificConfig::OpenAI { openai } => openai.model.clone(),
+        ProviderSpecificConfig::Gemini { gemini } => gemini.model.clone(),
+        ProviderSpecificConfig::Ollama { ollama } => ollama.model.clone(),
+        ProviderSpecificConfig::OpenAI { openai } => openai.model.clone(),
     }
 }
 
@@ -35,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         colored::control::set_override(true);
     }
 
-    match shell_integration::auto_setup_shell_function() {
+    match auto_setup_shell_function() {
         Ok(true) => {
             eprintln!(
                 "{}",
@@ -47,22 +57,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(_) => {}
     }
 
-    let cli = cli::parse_cli_args()?;
+    let cli = parse_cli_args()?;
 
     if let Some(command) = cli.subcommand {
         match command {
             cli::Subcommands::Api => {
-                config::interactive_setup()?;
+                interactive_setup()?;
                 return Ok(());
             }
             cli::Subcommands::Uninstall => {
-                uninstall::uninstall_nlsh()?;
+                uninstall_nlsh()?;
                 return Ok(());
             }
         }
     }
 
-    let config = match config::load_config() {
+    let config = match load_config() {
         Ok(cfg) => cfg,
         Err(e) => {
             if e.to_string().contains("No such file") {
@@ -79,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let provider = match providers::create_provider(&config) {
+    let provider = match create_provider(&config) {
         Ok(p) => p,
         Err(e) => {
             display_error(&e.to_string());
@@ -116,24 +126,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn process_command_interactive(
     user_input: &str,
     provider: &dyn providers::AIProvider,
-    config: &config::Config,
+    config: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let model_name = get_model_name(config);
-    eprint!(
+    eprint_flush(&format!(
         "{}",
         format!("using {}...", model_name).truecolor(128, 128, 128)
-    );
-    let _ = io::Write::flush(&mut io::stderr());
+    ));
 
-    let prompt = prompt::create_system_prompt(user_input);
+    let prompt = create_system_prompt(user_input);
 
     let cancel_token = CancellationToken::new();
-    let cancel_clone = cancel_token.clone();
+    let cancel_token_clone = cancel_token.clone();
 
     // spawn task to listen for Ctrl+C during request
     let ctrl_c_task = tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
-        cancel_clone.cancel();
+        cancel_token_clone.cancel();
     });
 
     let response = tokio::select! {
@@ -142,23 +151,20 @@ async fn process_command_interactive(
             match result {
                 Ok(res) => res,
                 Err(e) => {
-                    eprint!("\r{}\r", " ".repeat(50));
-                    let _ = io::Write::flush(&mut io::stderr());
+                    clear_line_with_spaces(50);
                     return Err(Box::new(e));
                 }
             }
         }
         _ = cancel_token.cancelled() => {
-            eprint!("\r{}\r", " ".repeat(50));
-            let _ = io::Write::flush(&mut io::stderr());
+            clear_line_with_spaces(50);
             return Err("request cancelled".into());
         }
     };
 
-    eprint!("\r{}\r", " ".repeat(50));
-    let _ = io::Write::flush(&mut io::stderr());
+    clear_line_with_spaces(50);
 
-    let command = prompt::clean_response(&response);
+    let command = clean_response(&response);
 
     if command.trim().is_empty() {
         display_error("failed to generate a valid command.");
@@ -171,12 +177,12 @@ async fn process_command_interactive(
 
     let display_lines = display_command(&command);
 
-    let confirmed = confirmation::confirm_execution(display_lines)?;
+    let confirmed = confirm_execution(display_lines)?;
     if !confirmed {
         return Ok(());
     }
 
-    cli::execute_shell_command(&command)?;
+    execute_shell_command(&command)?;
 
     Ok(())
 }
@@ -184,24 +190,23 @@ async fn process_command_interactive(
 async fn process_command_single(
     user_input: &str,
     provider: &dyn providers::AIProvider,
-    config: &config::Config,
+    config: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let model_name = get_model_name(config);
-    eprint!(
+    eprint_flush(&format!(
         "{}",
         format!("using {}...", model_name).truecolor(128, 128, 128)
-    );
-    let _ = io::Write::flush(&mut io::stderr());
+    ));
 
-    let prompt = prompt::create_system_prompt(user_input);
+    let prompt = create_system_prompt(user_input);
 
     let cancel_token = CancellationToken::new();
-    let cancel_clone = cancel_token.clone();
+    let cancel_token_clone = cancel_token.clone();
 
     // spawn task to listen for Ctrl+C
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.ok();
-        cancel_clone.cancel();
+        cancel_token_clone.cancel();
         eprintln!();
         exit_with_code(130);
     });
@@ -209,16 +214,14 @@ async fn process_command_single(
     let response = match provider.generate(&prompt).await {
         Ok(res) => res,
         Err(e) => {
-            eprint!("\r{}\r", " ".repeat(50));
-            let _ = io::Write::flush(&mut io::stderr());
+            clear_line_with_spaces(50);
             return Err(Box::new(e));
         }
     };
 
-    eprint!("\r{}\r", " ".repeat(50));
-    let _ = io::Write::flush(&mut io::stderr());
+    clear_line_with_spaces(50);
 
-    let command = prompt::clean_response(&response);
+    let command = clean_response(&response);
 
     if command.trim().is_empty() {
         display_error("failed to generate a valid command.");
@@ -231,7 +234,7 @@ async fn process_command_single(
 
     let display_lines = display_command(&command);
 
-    let confirmed = confirmation::confirm_execution(display_lines)?;
+    let confirmed = confirm_execution(display_lines)?;
     if !confirmed {
         return Ok(());
     }

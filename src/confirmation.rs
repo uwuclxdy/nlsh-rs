@@ -1,7 +1,8 @@
-use crate::cli;
-use crate::common::show_cursor;
 use colored::*;
 use std::io;
+
+use crate::cli::{is_interactive_terminal, print_error_with_message, read_single_key};
+use crate::common::{clear_line, clear_lines, eprint_flush, show_cursor};
 
 pub fn display_command(command: &str) -> usize {
     let lines: Vec<&str> = command.lines().collect();
@@ -23,23 +24,21 @@ pub fn display_command(command: &str) -> usize {
 }
 
 pub fn confirm_execution(display_lines: usize) -> Result<bool, io::Error> {
-    if !cli::is_interactive_terminal() {
+    if !is_interactive_terminal() {
         return Ok(true);
     }
 
-    eprint!("{}", "[Enter to execute, Ctrl+C to cancel]".yellow());
+    eprint_flush(&"[Enter to execute, Ctrl+C to cancel]".yellow().to_string());
 
-    let result = cli::read_single_key()?;
+    let result = read_single_key()?;
 
     match result {
-        true => eprint!("\r\x1b[K"), // clear prompt line only, keep command visible
+        true => clear_line(), // clear prompt line only, keep command visible
         false => {
             // clear prompt line
-            eprint!("\r\x1b[K");
+            clear_line();
             // clear all command display lines
-            for _ in 0..display_lines {
-                eprint!("\x1b[1A\x1b[K");
-            }
+            clear_lines(display_lines);
             show_cursor();
         }
     }
@@ -48,5 +47,5 @@ pub fn confirm_execution(display_lines: usize) -> Result<bool, io::Error> {
 }
 
 pub fn display_error(message: &str) {
-    eprintln!("{} {}", "error:".red().bold(), message);
+    print_error_with_message(message);
 }

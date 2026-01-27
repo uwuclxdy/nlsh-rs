@@ -1,55 +1,58 @@
-use crate::common::show_cursor;
 use colored::*;
 use dialoguer::Confirm;
 use std::fs;
-use std::io;
 use std::process::Command;
+
+use crate::cli::{print_check_with_message, print_warning_with_message};
+use crate::common::{handle_interrupt, show_cursor};
+use crate::shell_integration::remove_shell_integration;
 
 pub fn uninstall_nlsh() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("{}", "uninstalling nlsh-rs...".yellow().bold());
     eprintln!();
 
-    match crate::shell_integration::remove_shell_integration() {
-        Ok(true) => {
-            eprintln!("{}", "✓ removed shell integration".green());
-        }
-        Ok(false) => {
-            eprintln!("{}", "  no shell integration found".dimmed());
-        }
-        Err(e) => {
-            eprintln!(
-                "{} failed to remove shell integration: {}",
-                "warning:".yellow(),
-                e
-            );
-        }
-    }
+    handle_shell_integration();
+    uninstall_cargo_crate()?;
+    remove_config_optional()?;
+    remove_repo_optional()?;
 
-    eprintln!("{}", "  uninstalling cargo crate...".dimmed());
+    eprintln!();
+    eprintln!("{}", "nlsh-rs successfully uninstalled.".green().bold());
+    eprintln!("{}", "please restart your shell or run 'source ~/.bashrc' (or 'source ~/.config/fish/config.fish' for fish).".yellow());
+
+    Ok(())
+}
+
+fn handle_shell_integration() {
+    match remove_shell_integration() {
+        Ok(true) => print_check_with_message("removed shell integration"),
+        Ok(false) => eprintln!("{}", "  no shell integration found".dimmed()),
+        Err(e) => print_warning_with_message(&format!("failed to remove shell integration: {}", e)),
+    }
+}
+
+fn uninstall_cargo_crate() -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new("cargo")
         .args(["uninstall", "nlsh-rs"])
         .output()?;
 
     if output.status.success() {
-        eprintln!("{}", "✓ uninstalled cargo crate".green());
+        print_check_with_message("uninstalled cargo crate");
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("package 'nlsh-rs' is not installed") || stderr.contains("not installed")
-        {
+        if stderr.contains("package 'nlsh-rs' is not installed") || stderr.contains("not installed") {
             eprintln!("{}", "  cargo crate not installed".dimmed());
         } else {
-            eprintln!(
-                "{} failed to uninstall: {}",
-                "warning:".yellow(),
-                stderr.trim()
-            );
+            print_warning_with_message(&format!("failed to uninstall: {}", stderr.trim()));
         }
     }
+    Ok(())
+}
 
+fn remove_config_optional() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!();
     show_cursor();
-    let _ = io::Write::flush(&mut io::stderr());
-    let remove_config = crate::common::handle_interrupt(
+    let remove_config = handle_interrupt(
         Confirm::new()
             .with_prompt("remove configuration?")
             .default(false)
@@ -63,12 +66,15 @@ pub fn uninstall_nlsh() -> Result<(), Box<dyn std::error::Error>> {
 
         if config_dir.exists() {
             fs::remove_dir_all(&config_dir)?;
-            eprintln!("{}", "✓ removed configuration".green());
+            print_check_with_message("removed configuration");
         } else {
             eprintln!("{}", "  no configuration found".dimmed());
         }
     }
+    Ok(())
+}
 
+fn remove_repo_optional() -> Result<(), Box<dyn std::error::Error>> {
     let current_dir = std::env::current_dir()?;
     let cargo_toml = current_dir.join("Cargo.toml");
 
@@ -77,8 +83,7 @@ pub fn uninstall_nlsh() -> Result<(), Box<dyn std::error::Error>> {
         if contents.contains("name = \"nlsh-rs\"") {
             eprintln!();
             show_cursor();
-            let _ = io::Write::flush(&mut io::stderr());
-            let remove_repo = crate::common::handle_interrupt(
+            let remove_repo = handle_interrupt(
                 Confirm::new()
                     .with_prompt("remove current directory (nlsh-rs repository)?")
                     .default(false)
@@ -89,16 +94,10 @@ pub fn uninstall_nlsh() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("{}", "  removing directory...".dimmed());
                 let parent = current_dir.parent().ok_or("cannot remove root directory")?;
                 std::env::set_current_dir(parent)?;
-
                 fs::remove_dir_all(&current_dir)?;
-                eprintln!("{}", "✓ removed nlsh-rs repository".green());
+                print_check_with_message("removed nlsh-rs repository");
             }
         }
     }
-
-    eprintln!();
-    eprintln!("{}", "nlsh-rs uninstalled successfully!".green().bold());
-    eprintln!("{}", "please restart your shell or run 'source ~/.bashrc' (or 'source ~/.config/fish/config.fish' for fish).".yellow());
-
     Ok(())
 }

@@ -1,7 +1,35 @@
+use colored::*;
 use dialoguer::{Confirm, Input, Select};
+use std::env;
 use std::io::{self, IsTerminal, Read, stdin};
 use std::path::PathBuf;
 use std::process::Command;
+
+use crate::common::handle_interrupt;
+
+// ====================
+// ascii symbols
+// ====================
+
+const SYMBOL_CHECK: &str = "✓";
+const SYMBOL_ERROR: &str = "error:";
+const SYMBOL_WARNING: &str = "warning:";
+
+pub fn print_check_with_message(message: &str) {
+    eprintln!("{} {}", SYMBOL_CHECK.green(), message);
+}
+
+pub fn print_check_with_bold_message(message: &str) {
+    eprintln!("{} {}", SYMBOL_CHECK.green(), message.bold());
+}
+
+pub fn print_error_with_message(message: &str) {
+    eprintln!("{} {}", SYMBOL_ERROR.red().bold(), message);
+}
+
+pub fn print_warning_with_message(message: &str) {
+    eprintln!("{} {}", SYMBOL_WARNING.yellow(), message);
+}
 
 // ====================
 // cli argument parsing
@@ -73,7 +101,7 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
         Command::new("sh")
             .arg("-c")
             .arg(expanded.as_ref())
-            .current_dir(std::env::current_dir()?)
+            .current_dir(env::current_dir()?)
             .status()?;
         return Ok(());
     }
@@ -89,19 +117,19 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
             let path = if parts.len() > 1 { parts[1] } else { "" };
 
             let target_dir = if path.is_empty() {
-                PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".to_string()))
+                PathBuf::from(env::var("HOME").unwrap_or_else(|_| "/".to_string()))
             } else {
                 PathBuf::from(path)
             };
 
-            std::env::set_current_dir(&target_dir)?;
+            env::set_current_dir(&target_dir)?;
         }
         "export" => {
             if parts.len() > 1 {
                 for part in &parts[1..] {
                     if let Some((key, value)) = part.split_once('=') {
                         unsafe {
-                            std::env::set_var(key, value);
+                            env::set_var(key, value);
                         }
                     }
                 }
@@ -110,7 +138,7 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
         "unset" => {
             for var in &parts[1..] {
                 unsafe {
-                    std::env::remove_var(var);
+                    env::remove_var(var);
                 }
             }
         }
@@ -118,7 +146,7 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
             Command::new("sh")
                 .arg("-c")
                 .arg(expanded.as_ref())
-                .current_dir(std::env::current_dir()?)
+                .current_dir(env::current_dir()?)
                 .status()?;
         }
     }
@@ -131,21 +159,23 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
 // ====================
 
 pub fn read_single_key() -> Result<bool, io::Error> {
+    use libc::{ECHO, ICANON, ISIG, STDIN_FILENO, TCSANOW, VMIN, VTIME, tcgetattr, tcsetattr};
+
     let mut termios = unsafe {
         let mut termios = std::mem::zeroed();
-        if libc::tcgetattr(libc::STDIN_FILENO, &mut termios) != 0 {
+        if tcgetattr(STDIN_FILENO, &mut termios) != 0 {
             return Err(io::Error::last_os_error());
         }
         termios
     };
 
     let original_termios = termios;
-    termios.c_lflag &= !(libc::ICANON | libc::ECHO | libc::ISIG);
-    termios.c_cc[libc::VMIN] = 1;
-    termios.c_cc[libc::VTIME] = 0;
+    termios.c_lflag &= !(ICANON | ECHO | ISIG);
+    termios.c_cc[VMIN] = 1;
+    termios.c_cc[VTIME] = 0;
 
     unsafe {
-        if libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &termios) != 0 {
+        if tcsetattr(STDIN_FILENO, TCSANOW, &termios) != 0 {
             return Err(io::Error::last_os_error());
         }
     }
@@ -167,7 +197,7 @@ pub fn read_single_key() -> Result<bool, io::Error> {
     };
 
     unsafe {
-        libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &original_termios);
+        tcsetattr(STDIN_FILENO, TCSANOW, &original_termios);
     }
 
     result
@@ -186,7 +216,7 @@ pub fn prompt_select(
     items: &[String],
     default: usize,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    crate::common::handle_interrupt(
+    handle_interrupt(
         Select::new()
             .with_prompt(prompt)
             .items(items)
@@ -196,14 +226,14 @@ pub fn prompt_select(
 }
 
 pub fn prompt_input(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    crate::common::handle_interrupt(Input::new().with_prompt(prompt).interact_text())
+    handle_interrupt(Input::new().with_prompt(prompt).interact_text())
 }
 
 pub fn prompt_input_with_default(
     prompt: &str,
     default: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    crate::common::handle_interrupt(
+    handle_interrupt(
         Input::new()
             .with_prompt(prompt)
             .default(default.to_string())
@@ -212,7 +242,7 @@ pub fn prompt_input_with_default(
 }
 
 pub fn prompt_input_allow_empty(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    crate::common::handle_interrupt(
+    handle_interrupt(
         Input::new()
             .with_prompt(prompt)
             .allow_empty(true)
@@ -221,7 +251,7 @@ pub fn prompt_input_allow_empty(prompt: &str) -> Result<String, Box<dyn std::err
 }
 
 pub fn prompt_confirm(prompt: &str, default: bool) -> Result<bool, Box<dyn std::error::Error>> {
-    crate::common::handle_interrupt(
+    handle_interrupt(
         Confirm::new()
             .with_prompt(prompt)
             .default(default)
@@ -234,9 +264,9 @@ pub fn prompt_confirm(prompt: &str, default: bool) -> Result<bool, Box<dyn std::
 // ====================
 
 pub fn get_home_dir() -> PathBuf {
-    std::env::var("HOME")
+    env::var("HOME")
         .ok()
-        .or_else(|| std::env::var("USERPROFILE").ok())
+        .or_else(|| env::var("USERPROFILE").ok())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("~"))
 }

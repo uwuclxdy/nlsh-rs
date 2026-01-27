@@ -1,6 +1,7 @@
-use crate::cli;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+
+use crate::cli::get_home_dir;
 
 pub fn generate_bash_autocomplete() -> &'static str {
     r#"_nlsh_rs_completions() {
@@ -109,7 +110,7 @@ fn verify_and_fix_integrations() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn verify_and_fix_bash_integration() -> Result<(), Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let bashrc_path = home.join(".bashrc");
 
     if !bashrc_path.exists() {
@@ -136,7 +137,7 @@ fn verify_and_fix_bash_integration() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn verify_and_fix_fish_integration() -> Result<(), Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let fish_function_path = home.join(".config/fish/functions/nlsh-rs.fish");
 
     if !fish_function_path.exists() {
@@ -158,7 +159,7 @@ fn verify_and_fix_fish_integration() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn setup_bash_integration() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let bashrc_path = home.join(".bashrc");
 
     if !bashrc_path.exists() {
@@ -180,7 +181,7 @@ fn setup_bash_integration() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn setup_fish_integration() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let fish_functions_dir = home.join(".config/fish/functions");
     let fish_function_path = fish_functions_dir.join("nlsh-rs.fish");
 
@@ -208,7 +209,7 @@ fn setup_fish_integration() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 pub fn remove_bash_integration() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let bashrc_path = home.join(".bashrc");
 
     if !bashrc_path.exists() {
@@ -271,7 +272,7 @@ pub fn remove_bash_integration() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 pub fn remove_fish_integration() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let fish_function_path = home.join(".config/fish/functions/nlsh-rs.fish");
 
     if fish_function_path.exists() {
@@ -290,7 +291,7 @@ fn setup_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn setup_bash_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let completion_dir = home.join(".local/share/bash-completion/completions");
     let completion_path = completion_dir.join("nlsh-rs");
 
@@ -313,7 +314,7 @@ fn setup_bash_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn setup_zsh_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let zsh_config = home.join(".zshrc");
     if !zsh_config.exists() {
         return Ok(false);
@@ -349,7 +350,7 @@ fn setup_zsh_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn setup_fish_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let fish_config_dir = home.join(".config/fish");
     if !fish_config_dir.exists() {
         return Ok(false);
@@ -376,7 +377,7 @@ fn setup_fish_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn remove_bash_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let completion_path = home.join(".local/share/bash-completion/completions/nlsh-rs");
 
     if completion_path.exists() {
@@ -388,7 +389,7 @@ fn remove_bash_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn remove_zsh_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let completion_path = home.join(".local/share/zsh/site-functions/_nlsh-rs");
 
     let mut removed = false;
@@ -437,7 +438,7 @@ fn remove_zsh_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
 }
 
 fn remove_fish_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
-    let home = cli::get_home_dir();
+    let home = get_home_dir();
     let completion_path = home.join(".config/fish/completions/nlsh-rs.fish");
 
     if completion_path.exists() {
