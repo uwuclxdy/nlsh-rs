@@ -157,20 +157,3 @@ pub fn setup_terminal() {
 pub fn setup_terminal() {
     // no-op on non-unix systems
 }
-
-// ====================
-// file system helpers
-// ====================
-
-/// sets restrictive file permissions on unix systems.
-pub fn set_file_permissions(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let metadata = fs::metadata(path)?;
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(0o600);
-        fs::set_permissions(path, permissions)?;
-    }
-    Ok(())
-}

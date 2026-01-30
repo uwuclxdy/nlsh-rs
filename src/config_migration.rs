@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-use crate::common::set_file_permissions;
 use crate::config::{Config, MultiProviderConfig};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,7 +56,6 @@ pub fn migrate_config(config_path: &Path) -> Result<bool, Box<dyn std::error::Er
         if migrator.can_migrate(&content) {
             let new_content = migrator.migrate(&content)?;
             fs::write(config_path, new_content)?;
-            set_file_permissions(config_path)?;
             return Ok(true);
         }
     }

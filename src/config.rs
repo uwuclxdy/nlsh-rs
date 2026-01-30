@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::cli::{
     print_check_with_bold_message, prompt_input, prompt_input_with_default, prompt_select,
 };
-use crate::common::{clear_line, set_file_permissions};
+use crate::common::clear_line;
 use crate::config_migration;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -132,7 +132,6 @@ pub fn save_config(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let config_path = get_config_path();
     let toml_string = toml::to_string_pretty(config)?;
     fs::write(&config_path, toml_string)?;
-    set_file_permissions(&config_path)?;
     Ok(())
 }
 
