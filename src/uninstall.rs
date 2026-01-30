@@ -1,10 +1,10 @@
 use colored::*;
-use dialoguer::Confirm;
+use inquire::Confirm;
 use std::fs;
 use std::process::Command;
 
 use crate::cli::{print_check_with_message, print_warning_with_message};
-use crate::common::{handle_interrupt, show_cursor};
+use crate::common::{clear_line, show_cursor};
 use crate::shell_integration::remove_shell_integration;
 
 pub fn uninstall_nlsh() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +40,8 @@ fn uninstall_cargo_crate() -> Result<(), Box<dyn std::error::Error>> {
         print_check_with_message("uninstalled cargo crate");
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("package 'nlsh-rs' is not installed") || stderr.contains("not installed") {
+        if stderr.contains("package 'nlsh-rs' is not installed") || stderr.contains("not installed")
+        {
             eprintln!("{}", "  cargo crate not installed".dimmed());
         } else {
             print_warning_with_message(&format!("failed to uninstall: {}", stderr.trim()));
@@ -52,12 +53,10 @@ fn uninstall_cargo_crate() -> Result<(), Box<dyn std::error::Error>> {
 fn remove_config_optional() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!();
     show_cursor();
-    let remove_config = handle_interrupt(
-        Confirm::new()
-            .with_prompt("remove configuration?")
-            .default(false)
-            .interact(),
-    )?;
+    let remove_config = Confirm::new("Remove configuration?")
+        .with_default(false)
+        .prompt()?;
+    clear_line();
 
     if remove_config {
         let config_dir = dirs::config_dir()
@@ -83,12 +82,10 @@ fn remove_repo_optional() -> Result<(), Box<dyn std::error::Error>> {
         if contents.contains("name = \"nlsh-rs\"") {
             eprintln!();
             show_cursor();
-            let remove_repo = handle_interrupt(
-                Confirm::new()
-                    .with_prompt("remove current directory (nlsh-rs repository)?")
-                    .default(false)
-                    .interact(),
-            )?;
+            let remove_repo = Confirm::new("Remove current directory (nlsh-rs repository)?")
+                .with_default(false)
+                .prompt()?;
+            clear_line();
 
             if remove_repo {
                 eprintln!("{}", "  removing directory...".dimmed());

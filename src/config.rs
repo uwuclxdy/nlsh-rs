@@ -1,13 +1,13 @@
 use colored::*;
+use inquire::{Confirm, Text};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
 use crate::cli::{
-    print_check_with_bold_message, prompt_confirm, prompt_input, prompt_input_allow_empty,
-    prompt_input_with_default, prompt_select,
+    print_check_with_bold_message, prompt_input, prompt_input_with_default, prompt_select,
 };
-use crate::common::set_file_permissions;
+use crate::common::{clear_line, set_file_permissions};
 use crate::config_migration;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -172,7 +172,11 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let has_saved = if has_saved_creds && Some(providers[selection].1) != current_provider {
-        prompt_confirm("use saved credentials?", true)?
+        let result = Confirm::new("Use saved credentials?")
+            .with_default(true)
+            .prompt()?;
+        clear_line();
+        result
     } else {
         false
     };
@@ -232,9 +236,9 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let api_key = prompt_input("Enter your Gemini API key")?;
+    let api_key = prompt_input("Gemini API key")?;
 
-    let model = prompt_input_with_default("Enter model name", "gemini-2.5-flash")?;
+    let model = prompt_input_with_default("Model name", "gemini-2.5-flash")?;
 
     Ok(ProviderConfig {
         provider_type: "gemini".to_string(),
@@ -245,9 +249,9 @@ fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
 }
 
 fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let base_url = prompt_input_with_default("Enter Ollama base URL", "http://localhost:11434")?;
+    let base_url = prompt_input_with_default("Ollama base URL", "http://localhost:11434")?;
 
-    let model = prompt_input("Enter model name")?;
+    let model = set_model_name("Model name", None)?;
 
     Ok(ProviderConfig {
         provider_type: "ollama".to_string(),
@@ -258,18 +262,13 @@ fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
 }
 
 fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let base_url = prompt_input_with_default("Enter API base URL", "https://api.openai.com/v1")?;
+    let base_url = prompt_input_with_default("API base URL", "https://api.openai.com/v1")?;
 
-    let api_key =
-        prompt_input_allow_empty("Enter API key (leave empty for local servers like LM Studio)")?;
+    let api_key = Text::new("API key (optional for local servers)")
+        .with_help_message("Leave empty for local servers like LM Studio")
+        .prompt_skippable()?;
 
-    let api_key = if api_key.is_empty() {
-        None
-    } else {
-        Some(api_key)
-    };
-
-    let model = prompt_input("Enter model name")?;
+    let model = set_model_name("Model name", None)?;
 
     Ok(ProviderConfig {
         provider_type: "openai".to_string(),
@@ -281,4 +280,22 @@ fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
             },
         },
     })
+}
+
+fn set_model_name(
+    prompt: &str,
+    default: Option<&str>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let model = if let Some(def) = default {
+        prompt_input_with_default(prompt, def)?
+    } else {
+        prompt_input(prompt)?
+    };
+
+    if model.trim().is_empty() {
+        eprintln!("{}", "Model name cannot be empty".red());
+        return set_model_name(prompt, default);
+    }
+
+    Ok(model)
 }

@@ -1,11 +1,9 @@
 use colored::*;
-use dialoguer::{Confirm, Input, Select};
+use inquire::{Select, Text};
 use std::env;
-use std::io::{self, IsTerminal, Read, stdin};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::Command;
-
-use crate::common::handle_interrupt;
 
 // ====================
 // ascii symbols
@@ -154,57 +152,8 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-// ====================
-// interactive input
-// ====================
-
-pub fn read_single_key() -> Result<bool, io::Error> {
-    use libc::{ECHO, ICANON, ISIG, STDIN_FILENO, TCSANOW, VMIN, VTIME, tcgetattr, tcsetattr};
-
-    let mut termios = unsafe {
-        let mut termios = std::mem::zeroed();
-        if tcgetattr(STDIN_FILENO, &mut termios) != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        termios
-    };
-
-    let original_termios = termios;
-    termios.c_lflag &= !(ICANON | ECHO | ISIG);
-    termios.c_cc[VMIN] = 1;
-    termios.c_cc[VTIME] = 0;
-
-    unsafe {
-        if tcsetattr(STDIN_FILENO, TCSANOW, &termios) != 0 {
-            return Err(io::Error::last_os_error());
-        }
-    }
-
-    let result = loop {
-        let mut input: [u8; 1] = [0];
-        match stdin().read(&mut input) {
-            Ok(0) => break Err(io::Error::new(io::ErrorKind::UnexpectedEof, "eof")),
-            Ok(_) => {
-                match input[0] {
-                    b'\n' | b'\r' => break Ok(true), // enter
-                    3 => break Ok(false),            // ctrl+c - cancel
-                    _ => continue,                   // ignore all other input
-                }
-            }
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => break Ok(false),
-            Err(e) => break Err(e),
-        }
-    };
-
-    unsafe {
-        tcsetattr(STDIN_FILENO, TCSANOW, &original_termios);
-    }
-
-    result
-}
-
 pub fn is_interactive_terminal() -> bool {
-    stdin().is_terminal()
+    std::io::stdin().is_terminal()
 }
 
 // ====================
@@ -216,47 +165,24 @@ pub fn prompt_select(
     items: &[String],
     default: usize,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    handle_interrupt(
-        Select::new()
-            .with_prompt(prompt)
-            .items(items)
-            .default(default)
-            .interact(),
-    )
+    let selection = Select::new(prompt, items.to_vec())
+        .with_starting_cursor(default)
+        .prompt()?;
+    Ok(items
+        .iter()
+        .position(|x| x == &selection)
+        .unwrap_or(default))
 }
 
 pub fn prompt_input(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    handle_interrupt(Input::new().with_prompt(prompt).interact_text())
+    Ok(Text::new(prompt).prompt()?)
 }
 
 pub fn prompt_input_with_default(
     prompt: &str,
     default: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    handle_interrupt(
-        Input::new()
-            .with_prompt(prompt)
-            .default(default.to_string())
-            .interact_text(),
-    )
-}
-
-pub fn prompt_input_allow_empty(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    handle_interrupt(
-        Input::new()
-            .with_prompt(prompt)
-            .allow_empty(true)
-            .interact_text(),
-    )
-}
-
-pub fn prompt_confirm(prompt: &str, default: bool) -> Result<bool, Box<dyn std::error::Error>> {
-    handle_interrupt(
-        Confirm::new()
-            .with_prompt(prompt)
-            .default(default)
-            .interact(),
-    )
+    Ok(Text::new(prompt).with_default(default).prompt()?)
 }
 
 // ====================

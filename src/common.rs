@@ -21,6 +21,8 @@ pub fn setup_interrupt_handler() {
     #[allow(clippy::missing_safety_doc, clippy::fn_to_numeric_cast)]
     unsafe {
         extern "C" fn handle_sigint(_: libc::c_int) {
+            clear_line();
+            eprintln!();
             show_cursor();
             flush_stderr();
             // use _exit to avoid running destructors which might hang
@@ -35,29 +37,6 @@ pub fn setup_interrupt_handler() {
         libc::sigemptyset(&mut action.sa_mask);
 
         libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut());
-    }
-}
-
-/// handles ctrl+c to show the cursor before exiting with code 130.
-pub fn handle_interrupt<T>(
-    result: Result<T, dialoguer::Error>,
-) -> Result<T, Box<dyn std::error::Error>> {
-    match result {
-        Ok(val) => Ok(val),
-        Err(dialoguer::Error::IO(e)) => {
-            // show cursor on any io error
-            show_cursor();
-
-            // exit on interrupted or not connected errors
-            if e.kind() == io::ErrorKind::Interrupted
-                || e.kind() == io::ErrorKind::NotConnected
-                || e.kind() == io::ErrorKind::UnexpectedEof
-            {
-                std::process::exit(130);
-            }
-
-            Err(Box::new(dialoguer::Error::IO(e)))
-        }
     }
 }
 

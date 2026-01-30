@@ -1,8 +1,8 @@
 use colored::*;
-use std::io;
+use inquire::Confirm;
 
-use crate::cli::{is_interactive_terminal, print_error_with_message, read_single_key};
-use crate::common::{clear_line, clear_lines, eprint_flush, show_cursor};
+use crate::cli::{is_interactive_terminal, print_error_with_message};
+use crate::common::{clear_line, clear_lines, show_cursor};
 
 pub fn display_command(command: &str) -> usize {
     let lines: Vec<&str> = command.lines().collect();
@@ -23,27 +23,31 @@ pub fn display_command(command: &str) -> usize {
     }
 }
 
-pub fn confirm_execution(display_lines: usize) -> Result<bool, io::Error> {
+pub fn confirm_execution(display_lines: usize) -> Result<bool, Box<dyn std::error::Error>> {
     if !is_interactive_terminal() {
         return Ok(true);
     }
 
-    eprint_flush(&"[Enter to execute, Ctrl+C to cancel]".yellow().to_string());
-
-    let result = read_single_key()?;
+    let result = Confirm::new("")
+        .with_default(true)
+        .with_help_message("Enter to execute, Ctrl+C to cancel")
+        .prompt();
 
     match result {
-        true => clear_line(), // clear prompt line only, keep command visible
-        false => {
-            // clear prompt line
+        Ok(true) => {
+            // Clear inquire prompt line + help message line
             clear_line();
-            // clear all command display lines
-            clear_lines(display_lines);
+            clear_lines(1);
+            Ok(true)
+        }
+        Ok(false) | Err(_) => {
+            // Clear help message + prompt + command display
+            clear_line();
+            clear_lines(1 + display_lines);
             show_cursor();
+            Ok(false)
         }
     }
-
-    Ok(result)
 }
 
 pub fn display_error(message: &str) {
