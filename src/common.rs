@@ -2,43 +2,6 @@ use std::env;
 use std::fs;
 use std::io;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-// ====================
-// signal handling
-// ====================
-
-static HANDLER_INSTALLED: AtomicBool = AtomicBool::new(false);
-
-/// ctrl+c handler that shows the cursor before exit.
-/// should be called before any interactive prompts.
-pub fn setup_interrupt_handler() {
-    if HANDLER_INSTALLED.swap(true, Ordering::SeqCst) {
-        return;
-    }
-
-    #[cfg(unix)]
-    #[allow(clippy::missing_safety_doc, clippy::fn_to_numeric_cast)]
-    unsafe {
-        extern "C" fn handle_sigint(_: libc::c_int) {
-            clear_line();
-            eprintln!();
-            show_cursor();
-            flush_stderr();
-            // use _exit to avoid running destructors which might hang
-            unsafe {
-                libc::_exit(130);
-            }
-        }
-
-        let mut action: libc::sigaction = std::mem::zeroed();
-        action.sa_sigaction = handle_sigint as *const () as usize;
-        action.sa_flags = libc::SA_RESTART;
-        libc::sigemptyset(&mut action.sa_mask);
-
-        libc::sigaction(libc::SIGINT, &action, std::ptr::null_mut());
-    }
-}
 
 // ====================
 // environment helpers
@@ -181,13 +144,12 @@ pub fn exit_with_code(code: i32) -> ! {
 /// sets up terminal to hide control characters.
 #[cfg(unix)]
 pub fn setup_terminal() {
-    use std::os::unix::io::AsRawFd;
-    unsafe {
-        let mut termios: libc::termios = std::mem::zeroed();
-        if libc::tcgetattr(std::io::stdin().as_raw_fd(), &mut termios) == 0 {
-            termios.c_lflag &= !libc::ECHOCTL;
-            libc::tcsetattr(std::io::stdin().as_raw_fd(), libc::TCSANOW, &termios);
-        }
+    use nix::sys::termios::{LocalFlags, SetArg, tcgetattr, tcsetattr};
+
+    let stdin = std::io::stdin();
+    if let Ok(mut termios) = tcgetattr(&stdin) {
+        termios.local_flags.remove(LocalFlags::ECHOCTL);
+        let _ = tcsetattr(&stdin, SetArg::TCSANOW, &termios);
     }
 }
 

@@ -15,9 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 use cli::{execute_shell_command, parse_cli_args};
 use colored::*;
-use common::{
-    clear_line_with_spaces, eprint_flush, exit_with_code, setup_interrupt_handler, setup_terminal,
-};
+use common::{clear_line_with_spaces, eprint_flush, exit_with_code, setup_terminal};
 use config::{Config, ProviderSpecificConfig, interactive_setup, load_config};
 use confirmation::{confirm_execution, display_command, display_error};
 use error::NlshError;
@@ -39,7 +37,6 @@ fn get_model_name(config: &Config) -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_terminal();
-    setup_interrupt_handler();
 
     if std::io::stderr().is_terminal() {
         colored::control::set_override(true);

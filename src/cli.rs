@@ -122,24 +122,6 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
 
             env::set_current_dir(&target_dir)?;
         }
-        "export" => {
-            if parts.len() > 1 {
-                for part in &parts[1..] {
-                    if let Some((key, value)) = part.split_once('=') {
-                        unsafe {
-                            env::set_var(key, value);
-                        }
-                    }
-                }
-            }
-        }
-        "unset" => {
-            for var in &parts[1..] {
-                unsafe {
-                    env::remove_var(var);
-                }
-            }
-        }
         _ => {
             Command::new("sh")
                 .arg("-c")

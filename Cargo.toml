@@ -24,7 +24,9 @@ thiserror = "2.0"
 anyhow = "1.0"
 async-trait = "0.1"
 inquire = "0.9"
-libc = "0.2"
 rustyline = "17.0"
 log = "0.4"
 shellexpand = "3.1"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["term"] }
