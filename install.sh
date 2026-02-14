@@ -8,7 +8,7 @@ if [ ! -f "Cargo.toml" ] || ! grep -q "name = \"nlsh-rs\"" Cargo.toml; then
     cd "$TEMP_DIR/nlsh-rs"
 fi
 
-cargo build --release
+cargo build -r
 
 cargo install nlsh-rs --force --path .
 
