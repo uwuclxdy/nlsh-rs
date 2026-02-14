@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-use crate::config::{Config, MultiProviderConfig};
+use super::{Config, MultiProviderConfig};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct V1ProviderSection {

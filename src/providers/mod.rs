@@ -1,3 +1,4 @@
+mod base;
 mod gemini;
 mod ollama;
 mod openai;

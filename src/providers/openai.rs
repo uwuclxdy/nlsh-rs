@@ -1,12 +1,12 @@
 use crate::config::OpenAIConfig;
 use crate::error::NlshError;
 use crate::providers::AIProvider;
+use crate::providers::base::BaseProvider;
 use async_trait::async_trait;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 pub struct OpenAIProvider {
-    client: Client,
+    base: BaseProvider,
     base_url: String,
     api_key: Option<String>,
     model: String,
@@ -42,13 +42,8 @@ struct MessageResponse {
 
 impl OpenAIProvider {
     pub fn new(config: &OpenAIConfig) -> Result<Self, NlshError> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| NlshError::ConfigError(e.to_string()))?;
-
         Ok(Self {
-            client,
+            base: BaseProvider::new()?,
             base_url: config.base_url.clone(),
             api_key: config.api_key.clone(),
             model: config.model.clone(),
@@ -75,7 +70,8 @@ impl AIProvider for OpenAIProvider {
         };
 
         let response = if let Some(ref api_key) = self.api_key {
-            self.client
+            self.base
+                .client
                 .post(&url)
                 .header("Authorization", format!("Bearer {}", api_key))
                 .json(&request_body)
@@ -83,7 +79,8 @@ impl AIProvider for OpenAIProvider {
                 .await
                 .map_err(|e| NlshError::from_reqwest(e, "openai"))?
         } else {
-            self.client
+            self.base
+                .client
                 .post(&url)
                 .json(&request_body)
                 .send()

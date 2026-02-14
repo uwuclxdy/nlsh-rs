@@ -152,8 +152,3 @@ pub fn setup_terminal() {
         let _ = tcsetattr(&stdin, SetArg::TCSANOW, &termios);
     }
 }
-
-#[cfg(not(unix))]
-pub fn setup_terminal() {
-    // no-op on non-unix systems
-}

@@ -1,12 +1,12 @@
 use crate::config::OllamaConfig;
 use crate::error::NlshError;
 use crate::providers::AIProvider;
+use crate::providers::base::BaseProvider;
 use async_trait::async_trait;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 pub struct OllamaProvider {
-    client: Client,
+    base: BaseProvider,
     base_url: String,
     model: String,
 }
@@ -25,13 +25,8 @@ struct OllamaResponse {
 
 impl OllamaProvider {
     pub fn new(config: &OllamaConfig) -> Result<Self, NlshError> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| NlshError::ConfigError(e.to_string()))?;
-
         Ok(Self {
-            client,
+            base: BaseProvider::new()?,
             base_url: config.base_url.clone(),
             model: config.model.clone(),
         })
@@ -50,6 +45,7 @@ impl AIProvider for OllamaProvider {
         };
 
         let response = self
+            .base
             .client
             .post(&url)
             .json(&request_body)

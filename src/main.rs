@@ -1,7 +1,6 @@
 mod cli;
 mod common;
 mod config;
-mod config_migration;
 mod confirmation;
 mod error;
 mod interactive;
@@ -15,7 +14,9 @@ use tokio_util::sync::CancellationToken;
 
 use cli::{execute_shell_command, parse_cli_args};
 use colored::*;
-use common::{clear_line_with_spaces, eprint_flush, exit_with_code, setup_terminal};
+#[cfg(unix)]
+use common::setup_terminal;
+use common::{clear_line_with_spaces, eprint_flush, exit_with_code};
 use config::{Config, ProviderSpecificConfig, interactive_setup, load_config};
 use confirmation::{confirm_execution, display_command, display_error};
 use error::NlshError;
@@ -36,6 +37,7 @@ fn get_model_name(config: &Config) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(unix)]
     setup_terminal();
 
     if std::io::stderr().is_terminal() {

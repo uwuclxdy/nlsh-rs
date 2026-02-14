@@ -8,7 +8,7 @@ use crate::cli::{
     print_check_with_bold_message, prompt_input, prompt_input_with_default, prompt_select,
 };
 use crate::common::clear_line;
-use crate::config_migration;
+mod migration;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
@@ -118,7 +118,7 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     match toml::from_str::<Config>(&contents) {
         Ok(config) => Ok(config),
         Err(e) => {
-            if config_migration::migrate_config(&config_path)? {
+            if migration::migrate_config(&config_path)? {
                 let contents = fs::read_to_string(&config_path)?;
                 Ok(toml::from_str(&contents)?)
             } else {

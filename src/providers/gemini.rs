@@ -1,12 +1,12 @@
 use crate::config::GeminiConfig;
 use crate::error::NlshError;
 use crate::providers::AIProvider;
+use crate::providers::base::BaseProvider;
 use async_trait::async_trait;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 pub struct GeminiProvider {
-    client: Client,
+    base: BaseProvider,
     api_key: String,
     model: String,
 }
@@ -61,13 +61,8 @@ struct GeminiErrorDetail {
 
 impl GeminiProvider {
     pub fn new(config: &GeminiConfig) -> Result<Self, NlshError> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| NlshError::ConfigError(e.to_string()))?;
-
         Ok(Self {
-            client,
+            base: BaseProvider::new()?,
             api_key: config.api_key.clone(),
             model: config.model.clone(),
         })
@@ -91,6 +86,7 @@ impl AIProvider for GeminiProvider {
         };
 
         let response = self
+            .base
             .client
             .post(&url)
             .json(&request_body)
