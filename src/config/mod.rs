@@ -184,9 +184,9 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
         (providers[selection].1.to_string(), multi_providers)
     } else {
         let new_config = match selection {
-            0 => configure_gemini()?,
-            1 => configure_ollama()?,
-            2 => configure_openai()?,
+            0 => configure_gemini(multi_providers.gemini.as_ref())?,
+            1 => configure_ollama(multi_providers.ollama.as_ref())?,
+            2 => configure_openai(multi_providers.openai.as_ref())?,
             _ => unreachable!(),
         };
 
@@ -234,10 +234,19 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let api_key = prompt_input("Gemini API key")?;
+fn configure_gemini(
+    existing: Option<&GeminiConfig>,
+) -> Result<ProviderConfig, Box<dyn std::error::Error>> {
+    let api_key = if let Some(e) = existing {
+        prompt_input_with_default("Gemini API key", &e.api_key)?
+    } else {
+        prompt_input("Gemini API key")?
+    };
 
-    let model = prompt_input_with_default("Model name", "gemini-flash-latest")?;
+    let model_default = existing
+        .map(|e| e.model.as_str())
+        .unwrap_or("gemini-flash-latest");
+    let model = prompt_input_with_default("Model name", model_default)?;
 
     Ok(ProviderConfig {
         provider_type: "gemini".to_string(),
@@ -247,10 +256,15 @@ fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
     })
 }
 
-fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let base_url = prompt_input_with_default("Ollama base URL", "http://localhost:11434")?;
+fn configure_ollama(
+    existing: Option<&OllamaConfig>,
+) -> Result<ProviderConfig, Box<dyn std::error::Error>> {
+    let url_default = existing
+        .map(|e| e.base_url.as_str())
+        .unwrap_or("http://localhost:11434");
+    let base_url = prompt_input_with_default("Ollama base URL", url_default)?;
 
-    let model = set_model_name("Model name", None)?;
+    let model = set_model_name("Model name", existing.map(|e| e.model.as_str()))?;
 
     Ok(ProviderConfig {
         provider_type: "ollama".to_string(),
@@ -260,14 +274,24 @@ fn configure_ollama() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
     })
 }
 
-fn configure_openai() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
-    let base_url = prompt_input_with_default("API base URL", "https://api.openai.com/v1")?;
+fn configure_openai(
+    existing: Option<&OpenAIConfig>,
+) -> Result<ProviderConfig, Box<dyn std::error::Error>> {
+    let url_default = existing
+        .map(|e| e.base_url.as_str())
+        .unwrap_or("https://api.openai.com/v1");
+    let base_url = prompt_input_with_default("API base URL", url_default)?;
 
-    let api_key = Text::new("API key (optional for local servers)")
-        .with_help_message("Leave empty for local servers like LM Studio")
-        .prompt_skippable()?;
+    let api_key = {
+        let mut text = Text::new("API key (optional for local servers)")
+            .with_help_message("Leave empty for local servers like LM Studio");
+        if let Some(saved) = existing.and_then(|e| e.api_key.as_deref()) {
+            text = text.with_default(saved);
+        }
+        text.prompt_skippable()?
+    };
 
-    let model = set_model_name("Model name", None)?;
+    let model = set_model_name("Model name", existing.map(|e| e.model.as_str()))?;
 
     Ok(ProviderConfig {
         provider_type: "openai".to_string(),
