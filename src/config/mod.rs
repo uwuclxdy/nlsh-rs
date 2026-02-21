@@ -237,7 +237,7 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
 fn configure_gemini() -> Result<ProviderConfig, Box<dyn std::error::Error>> {
     let api_key = prompt_input("Gemini API key")?;
 
-    let model = prompt_input_with_default("Model name", "gemini-2.5-flash")?;
+    let model = prompt_input_with_default("Model name", "gemini-flash-latest")?;
 
     Ok(ProviderConfig {
         provider_type: "gemini".to_string(),
