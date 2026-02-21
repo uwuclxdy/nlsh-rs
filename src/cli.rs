@@ -43,6 +43,13 @@ pub struct CliArgs {
 pub enum Subcommands {
     Api,
     Uninstall,
+    Prompt { action: PromptAction },
+}
+
+#[derive(Debug, Clone)]
+pub enum PromptAction {
+    Show,
+    Edit,
 }
 
 pub fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
@@ -64,6 +71,16 @@ pub fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     enum Commands {
         Api,
         Uninstall,
+        Prompt {
+            #[arg(value_enum, default_value_t = ClapPromptAction::Show)]
+            action: ClapPromptAction,
+        },
+    }
+
+    #[derive(clap::ValueEnum, Clone)]
+    enum ClapPromptAction {
+        Show,
+        Edit,
     }
 
     let cli = Cli::parse();
@@ -71,6 +88,12 @@ pub fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let subcommand = match cli.subcommand {
         Some(Commands::Api) => Some(Subcommands::Api),
         Some(Commands::Uninstall) => Some(Subcommands::Uninstall),
+        Some(Commands::Prompt { action }) => Some(Subcommands::Prompt {
+            action: match action {
+                ClapPromptAction::Show => PromptAction::Show,
+                ClapPromptAction::Edit => PromptAction::Edit,
+            },
+        }),
         None => None,
     };
 

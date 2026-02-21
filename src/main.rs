@@ -21,7 +21,7 @@ use config::{Config, ProviderSpecificConfig, interactive_setup, load_config};
 use confirmation::{confirm_execution, display_command, display_error};
 use error::NlshError;
 use interactive::get_user_input;
-use prompt::{clean_response, create_system_prompt};
+use prompt::{DEFAULT_PROMPT_TEMPLATE, clean_response, create_system_prompt, validate_sys_prompt};
 use providers::create_provider;
 use shell_integration::auto_setup_shell_function;
 use uninstall::uninstall_nlsh;
@@ -66,6 +66,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             cli::Subcommands::Uninstall => {
                 uninstall_nlsh()?;
+                return Ok(());
+            }
+            cli::Subcommands::Prompt { action } => {
+                match action {
+                    cli::PromptAction::Show => {
+                        let content = config::load_sys_prompt()
+                            .unwrap_or_else(|| DEFAULT_PROMPT_TEMPLATE.to_string());
+                        println!("{}", content);
+                    }
+                    cli::PromptAction::Edit => {
+                        let path = config::get_sys_prompt_path();
+                        if !path.exists() {
+                            config::save_sys_prompt(DEFAULT_PROMPT_TEMPLATE)?;
+                        }
+                        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+                        std::process::Command::new(&editor).arg(&path).status()?;
+                        if let Some(saved) = config::load_sys_prompt()
+                            && !validate_sys_prompt(&saved)
+                        {
+                            display_error("sys-prompt must contain the {request} placeholder.");
+                        }
+                    }
+                }
                 return Ok(());
             }
         }
@@ -133,7 +156,14 @@ async fn process_command_interactive(
         format!("using {}...", model_name).truecolor(128, 128, 128)
     ));
 
-    let prompt = create_system_prompt(user_input);
+    let sys_prompt = config::load_sys_prompt();
+    if let Some(ref t) = sys_prompt
+        && !validate_sys_prompt(t)
+    {
+        display_error("sys-prompt must contain the {request} placeholder — using default.");
+    }
+    let effective = sys_prompt.as_deref().filter(|t| validate_sys_prompt(t));
+    let prompt = create_system_prompt(user_input, effective);
 
     let cancel_token = CancellationToken::new();
     let cancel_token_clone = cancel_token.clone();
@@ -197,7 +227,14 @@ async fn process_command_single(
         format!("using {}...", model_name).truecolor(128, 128, 128)
     ));
 
-    let prompt = create_system_prompt(user_input);
+    let sys_prompt = config::load_sys_prompt();
+    if let Some(ref t) = sys_prompt
+        && !validate_sys_prompt(t)
+    {
+        display_error("sys-prompt must contain the {request} placeholder — using default.");
+    }
+    let effective = sys_prompt.as_deref().filter(|t| validate_sys_prompt(t));
+    let prompt = create_system_prompt(user_input, effective);
 
     let cancel_token = CancellationToken::new();
     let cancel_token_clone = cancel_token.clone();

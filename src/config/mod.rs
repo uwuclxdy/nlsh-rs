@@ -102,13 +102,28 @@ pub struct OpenAIConfig {
     pub model: String,
 }
 
-fn get_config_path() -> PathBuf {
+pub fn get_config_dir() -> PathBuf {
     let config_dir = dirs::config_dir()
         .expect("failed to get config directory")
         .join("nlsh-rs");
-
     fs::create_dir_all(&config_dir).expect("failed to create config directory");
-    config_dir.join("config.toml")
+    config_dir
+}
+
+fn get_config_path() -> PathBuf {
+    get_config_dir().join("config.toml")
+}
+
+pub fn get_sys_prompt_path() -> PathBuf {
+    get_config_dir().join("sys-prompt.txt")
+}
+
+pub fn load_sys_prompt() -> Option<String> {
+    fs::read_to_string(get_sys_prompt_path()).ok()
+}
+
+pub fn save_sys_prompt(content: &str) -> Result<(), Box<dyn std::error::Error>> {
+    Ok(fs::write(get_sys_prompt_path(), content)?)
 }
 
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
