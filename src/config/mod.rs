@@ -264,7 +264,7 @@ fn configure_ollama(
         .unwrap_or("http://localhost:11434");
     let base_url = prompt_input_with_default("Ollama base URL", url_default)?;
 
-    let model = set_model_name("Model name", existing.map(|e| e.model.as_str()))?;
+    let model = set_model_name(existing.map(|e| e.model.as_str()))?;
 
     Ok(ProviderConfig {
         provider_type: "ollama".to_string(),
@@ -291,7 +291,7 @@ fn configure_openai(
         text.prompt_skippable()?
     };
 
-    let model = set_model_name("Model name", existing.map(|e| e.model.as_str()))?;
+    let model = set_model_name(existing.map(|e| e.model.as_str()))?;
 
     Ok(ProviderConfig {
         provider_type: "openai".to_string(),
@@ -305,19 +305,16 @@ fn configure_openai(
     })
 }
 
-fn set_model_name(
-    prompt: &str,
-    default: Option<&str>,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn set_model_name(default: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
     let model = if let Some(def) = default {
-        prompt_input_with_default(prompt, def)?
+        prompt_input_with_default("Model name:", def)?
     } else {
-        prompt_input(prompt)?
+        prompt_input("Model name:")?
     };
 
     if model.trim().is_empty() {
         eprintln!("{}", "Model name cannot be empty".red());
-        return set_model_name(prompt, default);
+        return set_model_name(default);
     }
 
     Ok(model)
