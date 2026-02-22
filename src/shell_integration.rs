@@ -95,6 +95,13 @@ pub fn generate_bash_function() -> &'static str {
         return $?
     fi
 
+    case "$1" in
+        api|explain|uninstall|prompt|--help|-h|--version|-V)
+            command nlsh-rs "$@"
+            return $?
+            ;;
+    esac
+
     local cmd=$(command nlsh-rs "$@")
     local exit_code=$?
     if [ $exit_code -eq 0 ] && [ -n "$cmd" ]; then
@@ -114,6 +121,12 @@ pub fn generate_fish_function() -> &'static str {
     if test (count $argv) -eq 0
         command nlsh-rs
         return $status
+    end
+
+    switch $argv[1]
+        case api explain uninstall prompt -- help --help -h --version -V
+            command nlsh-rs $argv
+            return $status
     end
 
     set cmd (command nlsh-rs $argv)
