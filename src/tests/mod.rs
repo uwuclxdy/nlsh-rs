@@ -4,6 +4,7 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+mod edit;
 mod explain;
 
 fn binary() -> PathBuf {
@@ -72,6 +73,38 @@ fn write_ollama_config(home: &std::path::Path, port: u16) {
         ),
     )
     .unwrap();
+}
+
+/// Like `run_with_stdin`, but sets `NLSH_FORCE_INTERACTIVE=1` so that confirmation
+/// prompts and the edit UI actually read from the piped stdin instead of being
+/// auto-approved. The piped bytes represent raw key presses (Y/N/Enter/escape
+/// sequences for arrow keys, etc.).
+fn run_with_stdin_interactive(
+    home: &std::path::Path,
+    args: &[&str],
+    stdin_data: &[u8],
+) -> std::process::Output {
+    let mut child = Command::new(binary())
+        .args(args)
+        .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home.join("config"))
+        .env("NO_COLOR", "1")
+        .env("NLSH_FORCE_INTERACTIVE", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn nlsh-rs");
+
+    let bytes = stdin_data.to_vec();
+    let mut pipe = child.stdin.take().unwrap();
+    std::thread::spawn(move || {
+        let _ = pipe.write_all(&bytes);
+    });
+
+    child
+        .wait_with_output()
+        .expect("failed to wait for nlsh-rs")
 }
 
 /// Like `run`, but feeds `stdin_data` into the binary's stdin before closing it.

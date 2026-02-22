@@ -95,28 +95,11 @@ fn explain_subcommand_no_args_exits_error() {
 
 // ── explain subcommand (single-run) ─────────────────────────────────────────
 
-// `nlsh-rs explain echo hello` → exits 0, stdout = command.
-#[test]
-fn explain_subcommand_with_mock_prints_command_to_stdout() {
-    let home = tests::temp_home("explain_mock_stdout");
-    let port = tests::mock_ollama(&["echoes hello to stdout"]);
-    tests::write_ollama_config(&home, port);
-
-    let out = tests::run(&home, &["explain", "echo", "hello"]);
-
-    assert!(
-        out.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "echo hello");
-}
-
 // `nlsh-rs explain echo hello` → explanation text from mock appears in stderr.
 #[test]
 fn explain_subcommand_with_mock_shows_explanation_in_stderr() {
     let home = tests::temp_home("explain_mock_stderr");
-    let port = tests::mock_ollama(&["prints hello to terminal"]);
+    let port = tests::mock_ollama(&["✅ echoes hello to stdout"]);
     tests::write_ollama_config(&home, port);
 
     let out = tests::run(&home, &["explain", "echo", "hello"]);
@@ -124,16 +107,16 @@ fn explain_subcommand_with_mock_shows_explanation_in_stderr() {
     assert!(out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("prints hello to terminal"),
+        stderr.contains("echoes hello to stdout"),
         "explanation not found in stderr: {stderr}"
     );
 }
 
 // ── main command flow ────────────────────────────────────────────────────────
 
-// Single-run (`nlsh-rs <request>`): mock returns a command → printed to stdout.
+// Single-run (`nlsh-rs <request>`): mock returns a command → command is executed.
 #[test]
-fn single_run_with_mock_prints_generated_command() {
+fn single_run_with_mock_executes_command() {
     let home = tests::temp_home("single_run_mock");
     let port = tests::mock_ollama(&["echo from_mock"]);
     tests::write_ollama_config(&home, port);
@@ -145,10 +128,7 @@ fn single_run_with_mock_prints_generated_command() {
         "stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(
-        String::from_utf8_lossy(&out.stdout).trim(),
-        "echo from_mock"
-    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "from_mock");
 }
 
 // Interactive mode (piped stdin): mock returns a command → binary executes it,

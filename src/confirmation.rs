@@ -1,40 +1,139 @@
 use colored::*;
 
 use crate::cli::{is_interactive_terminal, print_error_with_message};
-use crate::common::{clear_line, clear_lines, exit_with_code, flush_stderr, show_cursor};
+use crate::common::{
+    clear_n_lines, count_visual_lines, exit_with_code, flush_stderr, get_terminal_width,
+    show_cursor,
+};
 
 pub enum ConfirmResult {
     Yes,
     No,
     Explain,
+    Edit,
+    Cancel,
+}
+
+enum KeyEvent {
+    Char(char),
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Home,
+    End,
+    Enter,
+    CtrlC,
+    ArrowUp,
+    Eof,
+    Other,
+}
+
+/// Parse one logical key event from any `Read` source. Works on both raw-mode
+/// terminals and plain pipes (e.g. during tests with piped stdin).
+fn parse_key_from_reader(r: &mut impl std::io::Read) -> KeyEvent {
+    let mut b = [0u8; 1];
+    if r.read(&mut b).unwrap_or(0) == 0 {
+        return KeyEvent::Eof;
+    }
+    match b[0] {
+        b'\n' | b'\r' => KeyEvent::Enter,
+        b'\x03' => KeyEvent::CtrlC,
+        127 | b'\x08' => KeyEvent::Backspace,
+        b'\x1b' => {
+            if r.read(&mut b).unwrap_or(0) == 0 {
+                return KeyEvent::Eof;
+            }
+            if b[0] != b'[' {
+                return KeyEvent::Other;
+            }
+            if r.read(&mut b).unwrap_or(0) == 0 {
+                return KeyEvent::Eof;
+            }
+            match b[0] {
+                b'A' => KeyEvent::ArrowUp,
+                b'C' => KeyEvent::Right,
+                b'D' => KeyEvent::Left,
+                b'H' => KeyEvent::Home,
+                b'F' => KeyEvent::End,
+                b'3' => {
+                    let _ = r.read(&mut b); // consume '~'
+                    KeyEvent::Delete
+                }
+                b'1' => {
+                    let _ = r.read(&mut b); // consume '~'
+                    KeyEvent::Home
+                }
+                b'4' => {
+                    let _ = r.read(&mut b); // consume '~'
+                    KeyEvent::End
+                }
+                _ => KeyEvent::Other,
+            }
+        }
+        c @ 32..=126 => KeyEvent::Char(c as char),
+        _ => KeyEvent::Other,
+    }
+}
+
+#[cfg(unix)]
+fn read_key_event() -> KeyEvent {
+    use nix::sys::termios::{LocalFlags, SetArg, tcgetattr, tcsetattr};
+
+    let stdin_handle = std::io::stdin();
+
+    // Attempt raw mode; fall back to plain reads (e.g. piped stdin in tests).
+    if let Ok(original) = tcgetattr(&stdin_handle) {
+        let mut raw = original.clone();
+        raw.local_flags
+            .remove(LocalFlags::ICANON | LocalFlags::ECHO | LocalFlags::ISIG);
+        if tcsetattr(&stdin_handle, SetArg::TCSANOW, &raw).is_ok() {
+            let result = parse_key_from_reader(&mut stdin_handle.lock());
+            let _ = tcsetattr(&stdin_handle, SetArg::TCSANOW, &original);
+            return result;
+        }
+        let _ = tcsetattr(&stdin_handle, SetArg::TCSANOW, &original);
+    }
+
+    parse_key_from_reader(&mut std::io::stdin().lock())
+}
+
+#[cfg(not(unix))]
+fn read_key_event() -> KeyEvent {
+    parse_key_from_reader(&mut std::io::stdin().lock())
 }
 
 pub fn display_command(command: &str) -> usize {
+    let width = get_terminal_width();
     let lines: Vec<&str> = command.lines().collect();
-    let line_count = lines.len();
-    if line_count == 1 {
+    if lines.len() == 1 {
+        let visual = count_visual_lines(&format!("$ {}", command), width);
         eprintln!("{} {}", "$".cyan(), command.bright_white().bold());
-        1
+        visual
     } else {
+        let mut visual = count_visual_lines("> multiline command:", width);
         eprintln!(
             "{} {}",
             ">".cyan(),
             "multiline command:".bright_white().bold()
         );
         for line in lines.iter() {
+            visual += count_visual_lines(&format!("$ {}", line), width);
             eprintln!("{} {}", "$".cyan(), line.bright_white());
         }
-        line_count + 1 // header + command lines
+        visual
     }
 }
 
 pub fn display_explanation(explanation: &str) -> usize {
+    let width = get_terminal_width();
     let styled = style_html_tags(explanation);
+    let visual = count_visual_lines(&styled, width);
     let lines: Vec<&str> = styled.lines().collect();
     for line in &lines {
         eprintln!("{}", line.bright_white());
     }
-    lines.len()
+    visual
 }
 
 fn style_html_tags(text: &str) -> String {
@@ -55,33 +154,7 @@ fn style_html_tags(text: &str) -> String {
     }
 }
 
-fn read_raw_key() -> u8 {
-    use std::io::Read;
-
-    #[cfg(unix)]
-    {
-        use nix::sys::termios::{LocalFlags, SetArg, tcgetattr, tcsetattr};
-
-        let stdin = std::io::stdin();
-        if let Ok(original) = tcgetattr(&stdin) {
-            let mut raw = original.clone();
-            raw.local_flags
-                .remove(LocalFlags::ICANON | LocalFlags::ECHO | LocalFlags::ISIG);
-            if tcsetattr(&stdin, SetArg::TCSANOW, &raw).is_ok() {
-                let mut buf = [0u8; 1];
-                let _ = stdin.lock().read(&mut buf);
-                let _ = tcsetattr(&stdin, SetArg::TCSANOW, &original);
-                return buf[0];
-            }
-            let _ = tcsetattr(&stdin, SetArg::TCSANOW, &original);
-        }
-    }
-
-    let mut buf = [0u8; 1];
-    let _ = std::io::stdin().lock().read(&mut buf);
-    buf[0]
-}
-
+/// Prompt for confirmation with explain option
 pub fn confirm_with_explain(
     display_lines: usize,
 ) -> Result<ConfirmResult, Box<dyn std::error::Error>> {
@@ -89,101 +162,247 @@ pub fn confirm_with_explain(
         return Ok(ConfirmResult::Yes);
     }
 
-    confirmation_prompt(true);
-
+    let prompt_lines = confirmation_prompt(true);
     flush_stderr();
 
-    let key = read_raw_key();
-    match key {
-        b'\n' | b'\r' | b'y' | b'Y' => {
-            clear_line();
-            clear_lines(1);
-            Ok(ConfirmResult::Yes)
-        }
-        b'e' | b'E' => {
-            clear_line();
-            clear_lines(1);
-            Ok(ConfirmResult::Explain)
-        }
-        b'\x03' => {
-            clear_line();
-            clear_lines(1 + display_lines);
-            show_cursor();
-            exit_with_code(130);
-        }
-        _ => {
-            clear_line();
-            clear_lines(1 + display_lines);
-            show_cursor();
-            Ok(ConfirmResult::No)
+    let total = display_lines + prompt_lines;
+
+    loop {
+        match read_key_event() {
+            KeyEvent::Enter | KeyEvent::Char('y' | 'Y') => {
+                clear_n_lines(prompt_lines);
+                return Ok(ConfirmResult::Yes);
+            }
+            KeyEvent::Char('e' | 'E') => {
+                clear_n_lines(prompt_lines);
+                return Ok(ConfirmResult::Explain);
+            }
+            KeyEvent::ArrowUp => {
+                clear_n_lines(total);
+                return Ok(ConfirmResult::Edit);
+            }
+            KeyEvent::Char('n' | 'N') => {
+                clear_n_lines(total);
+                return Ok(ConfirmResult::Cancel);
+            }
+            KeyEvent::CtrlC => {
+                clear_n_lines(total);
+                show_cursor();
+                exit_with_code(130);
+            }
+            KeyEvent::Eof => {
+                clear_n_lines(total);
+                show_cursor();
+                return Ok(ConfirmResult::No);
+            }
+            KeyEvent::Other => {
+                // ignore unrecognised keys
+            }
+            _ => {
+                // ignore undefined keys
+            }
         }
     }
 }
 
-pub fn confirm_execution(display_lines: usize) -> Result<bool, Box<dyn std::error::Error>> {
+/// Prompt without the explain option.
+/// `cmd_lines` = persistent command lines (kept on Y/Enter).
+/// `expl_lines` = ephemeral explanation lines (cleared on Y/Enter).
+pub fn confirm_execution(
+    cmd_lines: usize,
+    expl_lines: usize,
+) -> Result<ConfirmResult, Box<dyn std::error::Error>> {
     if !is_interactive_terminal() {
-        return Ok(true);
+        return Ok(ConfirmResult::Yes);
     }
 
-    confirmation_prompt(false);
+    let prompt_lines = confirmation_prompt(false);
     flush_stderr();
 
-    let key = read_raw_key();
-    match key {
-        b'\n' | b'\r' | b'y' | b'Y' => {
-            clear_line();
-            clear_lines(1);
-            Ok(true)
-        }
-        b'\x03' => {
-            clear_line();
-            clear_lines(1 + display_lines);
-            show_cursor();
-            exit_with_code(130);
-        }
-        _ => {
-            clear_line();
-            clear_lines(1 + display_lines);
-            show_cursor();
-            Ok(false)
+    let total = cmd_lines + expl_lines + prompt_lines;
+
+    loop {
+        match read_key_event() {
+            KeyEvent::Enter | KeyEvent::Char('y' | 'Y') => {
+                clear_n_lines(expl_lines + prompt_lines);
+                return Ok(ConfirmResult::Yes);
+            }
+            KeyEvent::ArrowUp => {
+                clear_n_lines(total);
+                return Ok(ConfirmResult::Edit);
+            }
+            KeyEvent::Char('n' | 'N') => {
+                clear_n_lines(total);
+                return Ok(ConfirmResult::Cancel);
+            }
+            KeyEvent::CtrlC => {
+                clear_n_lines(total);
+                show_cursor();
+                exit_with_code(130);
+            }
+            KeyEvent::Eof => {
+                clear_n_lines(total);
+                show_cursor();
+                return Ok(ConfirmResult::No);
+            }
+            KeyEvent::Other => {
+                // ignore unrecognised keys
+            }
+            _ => {
+                // ignore undefined keys
+            }
         }
     }
 }
 
-fn confirmation_prompt(with_explain: bool) {
+fn confirmation_prompt(with_explain: bool) -> usize {
+    let width = get_terminal_width();
+    let mut visual = 0;
     if with_explain {
-        eprintln!(
+        let line1 = format!(
             "{} {}",
             "Run this?".yellow(),
             "(Y/e/n)".truecolor(128, 128, 128)
         );
-        eprint!(
-            "{}",
-            format!(
-                "[{}] to execute, [{}] to explain, [{}] to edit, [{}] to cancel",
-                "Y/Enter".bold(),
-                "E".bold(),
-                "Arrow Up".bold(),
-                "N".bold()
-            )
-            .cyan()
+        visual += count_visual_lines(&line1, width);
+        eprintln!("{}", line1);
+        let line2 = format!(
+            "[{}] to execute, [{}] to explain, [{}] to edit, [{}] to cancel",
+            "Y/Enter".bold(),
+            "E".bold(),
+            "Arrow Up".bold(),
+            "N".bold()
         );
+        visual += count_visual_lines(&line2, width);
+        eprint!("{}", line2.cyan());
     } else {
-        eprintln!(
+        let line1 = format!(
             "{} {}",
             "Run this?".yellow(),
             "(Y/n)".truecolor(128, 128, 128)
         );
-        eprint!(
-            "{}",
-            format!(
-                "[{}] to execute, [{}] to edit, [{}] to cancel",
-                "Y/Enter".bold(),
-                "Arrow Up".bold(),
-                "N".bold()
-            )
-            .cyan()
+        visual += count_visual_lines(&line1, width);
+        eprintln!("{}", line1);
+        let line2 = format!(
+            "[{}] to execute, [{}] to edit, [{}] to cancel",
+            "Y/Enter".bold(),
+            "Arrow Up".bold(),
+            "N".bold()
         );
+        visual += count_visual_lines(&line2, width);
+        eprint!("{}", line2.cyan());
+    }
+    visual
+}
+
+/// Presents the command for inline editing. The caller must have already cleared the
+/// confirmation prompt lines from the terminal. Returns the edited command on Enter,
+/// or exits with code 130 on Ctrl+C.
+pub fn edit_command(current: &str) -> Option<String> {
+    let width = get_terminal_width();
+    let mut buf: Vec<char> = current.chars().collect();
+    let mut pos = buf.len();
+
+    let hint_text = format!(
+        "[{}] to confirm, [{}] to quit",
+        "Enter".bold(),
+        "Ctrl+C".bold()
+    );
+    let hint_rows = count_visual_lines("[Enter] to confirm, [Ctrl+C] to quit", width);
+
+    // Draw: command on current line (no newline), hint on the line below.
+    // Then move cursor back up to the command line.
+    let init: String = buf.iter().collect();
+    eprint!("{} {}", "$".cyan(), init.bright_white().bold());
+    eprintln!(); // move to hint line
+    eprint!("{}", hint_text.cyan());
+    // cursor up 1 line, then set absolute column: "$ " = 2 visible chars, 1-indexed
+    eprint!("\x1b[1A\x1b[{}G", 3 + pos);
+    flush_stderr();
+
+    // clear the editor display (command + hint) from the terminal.
+    // cursor is on the first command row; move to last hint row then clear upward.
+    let clear_editor = |buf: &[char]| {
+        let cmd_text = format!("$ {}", buf.iter().collect::<String>());
+        let cmd_rows = count_visual_lines(&cmd_text, width);
+        let total = cmd_rows + hint_rows;
+        // move cursor from first command row to last hint row
+        for _ in 0..total.saturating_sub(1) {
+            eprint!("\x1b[1B");
+        }
+        clear_n_lines(total);
+    };
+
+    let redraw = |buf: &[char], pos: usize| {
+        let s: String = buf.iter().collect();
+        // cursor is on the command line; clear it and redraw
+        eprint!("\r\x1b[K{} {}", "$".cyan(), s.bright_white().bold());
+        eprint!("\x1b[{}G", 3 + pos);
+        flush_stderr();
+    };
+
+    loop {
+        match read_key_event() {
+            KeyEvent::Enter => {
+                clear_editor(&buf);
+                flush_stderr();
+                return Some(buf.into_iter().collect());
+            }
+            KeyEvent::CtrlC => {
+                clear_editor(&buf);
+                flush_stderr();
+                show_cursor();
+                exit_with_code(130);
+            }
+            KeyEvent::Backspace => {
+                if pos > 0 {
+                    buf.remove(pos - 1);
+                    pos -= 1;
+                    redraw(&buf, pos);
+                }
+            }
+            KeyEvent::Delete => {
+                if pos < buf.len() {
+                    buf.remove(pos);
+                    redraw(&buf, pos);
+                }
+            }
+            KeyEvent::Left => {
+                if pos > 0 {
+                    pos -= 1;
+                    eprint!("\x1b[1D");
+                    flush_stderr();
+                }
+            }
+            KeyEvent::Right => {
+                if pos < buf.len() {
+                    pos += 1;
+                    eprint!("\x1b[1C");
+                    flush_stderr();
+                }
+            }
+            KeyEvent::Home => {
+                pos = 0;
+                eprint!("\x1b[3G"); // column 3: after "$ "
+                flush_stderr();
+            }
+            KeyEvent::End => {
+                pos = buf.len();
+                eprint!("\x1b[{}G", 3 + pos);
+                flush_stderr();
+            }
+            KeyEvent::Char(c) => {
+                buf.insert(pos, c);
+                pos += 1;
+                redraw(&buf, pos);
+            }
+            KeyEvent::Eof => {
+                clear_editor(&buf);
+                flush_stderr();
+                return None;
+            }
+            KeyEvent::ArrowUp | KeyEvent::Other => {}
+        }
     }
 }
 

@@ -18,15 +18,14 @@ use tokio_util::sync::CancellationToken;
 use cli::{execute_shell_command, parse_cli_args};
 use colored::*;
 #[cfg(unix)]
-use common::setup_terminal;
-use common::{clear_line_with_spaces, eprint_flush, exit_with_code};
+use common::{clear_line_with_spaces, eprint_flush, exit_with_code, setup_terminal, show_cursor};
 use config::{Config, ProviderSpecificConfig, interactive_setup, load_config};
 use confirmation::{
     ConfirmResult, confirm_execution, confirm_with_explain, display_command, display_error,
-    display_explanation,
+    display_explanation, edit_command,
 };
 use error::NlshError;
-use interactive::get_user_input;
+use interactive::{get_user_input, get_user_input_prefilled};
 use prompt::{
     DEFAULT_EXPLAIN_PROMPT, DEFAULT_PROMPT_TEMPLATE, clean_response, create_explain_prompt,
     create_prompts, create_system_prompt, validate_explain_prompt, validate_sys_prompt,
@@ -164,18 +163,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             exit_with_code(1);
         }
         let command = cmd_parts.join(" ");
-        let cmd_lines = display_command(&command);
-        let explanation = get_explanation(&command, provider.as_ref())
-            .await
-            .unwrap_or_else(|_| String::new());
+        let explanation = get_explanation(&command, provider.as_ref()).await?;
         if explanation.is_empty() {
+            display_error("failed to generate a valid explanation.");
             return Ok(());
         }
-        let expl_lines = display_explanation(&explanation);
-        let confirmed = confirm_execution(cmd_lines + expl_lines)?;
-        if confirmed {
-            println!("{}", command);
-        }
+        display_explanation(&explanation);
         return Ok(());
     }
 
@@ -183,17 +176,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if interactive_mode {
         // interactive mode: keep running until ctrl+c at prompt
+        let mut prefill: Option<String> = None;
         loop {
-            let user_input = match get_user_input()? {
+            let raw_input = if let Some(initial) = prefill.take() {
+                get_user_input_prefilled(&initial)?
+            } else {
+                get_user_input()?
+            };
+            let user_input = match raw_input {
                 Some(input) => input,
                 None => continue,
             };
 
-            if let Err(e) =
-                process_command_interactive(&user_input, provider.as_ref(), &config).await
-                && !e.to_string().contains("cancelled")
-            {
-                display_error(&e.to_string());
+            match process_command_interactive(&user_input, provider.as_ref(), &config).await {
+                Ok(Some(p)) => {
+                    // move up past the old rustyline prompt line so the new prompt overwrites it
+                    eprint_flush("\x1b[1A\x1b[K");
+                    prefill = Some(p);
+                }
+                Ok(None) => {}
+                Err(e) if !e.to_string().contains("cancelled") => display_error(&e.to_string()),
+                Err(_) => {}
             }
         }
     } else {
@@ -209,7 +212,7 @@ async fn process_command_interactive(
     user_input: &str,
     provider: &dyn providers::AIProvider,
     config: &Config,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let model_name = get_model_name(config);
     eprint_flush(&format!(
         "{}",
@@ -253,7 +256,7 @@ async fn process_command_interactive(
 
     clear_line_with_spaces(50);
 
-    let command = clean_response(&response);
+    let mut command = clean_response(&response);
 
     if command.trim().is_empty() {
         display_error("failed to generate a valid command.");
@@ -264,24 +267,51 @@ async fn process_command_interactive(
         return Err("empty response".into());
     }
 
-    let cmd_lines = display_command(&command);
-
-    match confirm_with_explain(cmd_lines)? {
-        ConfirmResult::Yes => {
-            execute_shell_command(&command)?;
-        }
-        ConfirmResult::No => {}
-        ConfirmResult::Explain => {
-            let explanation = get_explanation(&command, provider).await?;
-            let expl_lines = display_explanation(&explanation);
-            let confirmed = confirm_execution(cmd_lines + expl_lines)?;
-            if confirmed {
+    let mut cancelled = false;
+    'outer: loop {
+        let cmd_lines = display_command(&command);
+        match confirm_with_explain(cmd_lines)? {
+            ConfirmResult::Yes => {
                 execute_shell_command(&command)?;
+                break 'outer;
+            }
+            ConfirmResult::No => break 'outer,
+            ConfirmResult::Cancel => {
+                cancelled = true;
+                break 'outer;
+            }
+            ConfirmResult::Edit => match edit_command(&command) {
+                Some(new_cmd) => command = new_cmd,
+                None => break 'outer,
+            },
+            ConfirmResult::Explain => {
+                let explanation = get_explanation(&command, provider).await?;
+                let expl_lines = display_explanation(&explanation);
+                match confirm_execution(cmd_lines, expl_lines)? {
+                    ConfirmResult::Yes => {
+                        execute_shell_command(&command)?;
+                        break 'outer;
+                    }
+                    ConfirmResult::No => break 'outer,
+                    ConfirmResult::Cancel => {
+                        cancelled = true;
+                        break 'outer;
+                    }
+                    ConfirmResult::Edit => match edit_command(&command) {
+                        Some(new_cmd) => command = new_cmd,
+                        None => break 'outer,
+                    },
+                    ConfirmResult::Explain => break 'outer,
+                }
             }
         }
     }
 
-    Ok(())
+    if cancelled {
+        Ok(Some(user_input.to_string()))
+    } else {
+        Ok(None)
+    }
 }
 
 async fn process_command_single(
@@ -325,7 +355,7 @@ async fn process_command_single(
 
     clear_line_with_spaces(50);
 
-    let command = clean_response(&response);
+    let mut command = clean_response(&response);
 
     if command.trim().is_empty() {
         display_error("failed to generate a valid command.");
@@ -336,19 +366,41 @@ async fn process_command_single(
         return Err("empty response".into());
     }
 
-    let cmd_lines = display_command(&command);
-
-    match confirm_with_explain(cmd_lines)? {
-        ConfirmResult::Yes => {
-            println!("{}", command);
-        }
-        ConfirmResult::No => {}
-        ConfirmResult::Explain => {
-            let explanation = get_explanation(&command, provider).await?;
-            let expl_lines = display_explanation(&explanation);
-            let confirmed = confirm_execution(cmd_lines + expl_lines)?;
-            if confirmed {
-                println!("{}", command);
+    'outer: loop {
+        let cmd_lines = display_command(&command);
+        match confirm_with_explain(cmd_lines)? {
+            ConfirmResult::Yes => {
+                execute_shell_command(&command)?;
+                break 'outer;
+            }
+            ConfirmResult::No => break 'outer,
+            ConfirmResult::Cancel => {
+                show_cursor();
+                exit_with_code(130);
+            }
+            ConfirmResult::Edit => match edit_command(&command) {
+                Some(new_cmd) => command = new_cmd,
+                None => break 'outer,
+            },
+            ConfirmResult::Explain => {
+                let explanation = get_explanation(&command, provider).await?;
+                let expl_lines = display_explanation(&explanation);
+                match confirm_execution(cmd_lines, expl_lines)? {
+                    ConfirmResult::Yes => {
+                        execute_shell_command(&command)?;
+                        break 'outer;
+                    }
+                    ConfirmResult::No => break 'outer,
+                    ConfirmResult::Cancel => {
+                        show_cursor();
+                        exit_with_code(130);
+                    }
+                    ConfirmResult::Edit => match edit_command(&command) {
+                        Some(new_cmd) => command = new_cmd,
+                        None => break 'outer,
+                    },
+                    ConfirmResult::Explain => break 'outer,
+                }
             }
         }
     }
@@ -399,5 +451,6 @@ async fn get_explanation(
     };
 
     clear_line_with_spaces(50);
-    Ok(result.trim().to_string())
+    let cleaned = prompt::clean_explanation(&result, command);
+    Ok(cleaned)
 }

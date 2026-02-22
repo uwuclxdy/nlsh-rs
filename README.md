@@ -43,13 +43,28 @@ Select provider and enter credentials. Config is stored in `~/.config/nlsh-rs/co
 ```bash
 $ nlsh-rs
 nlsh-rs> show disk usage
-→ df -h
-[enter to execute, ctrl+c to cancel]
+$ df -h
+Run this? (Y/e/n)
+[Y/Enter] to execute, [E] to explain, [Arrow Up] to edit, [N] to cancel
 ...
-$ nlsh-rs "show disk usage"
-→ df -h
-[enter to execute, ctrl+c to cancel]
+$ nlsh-rs show disk usage
+$ df -h
+Run this? (Y/e/n)
+[Y/Enter] to execute, [E] to explain, [Arrow Up] to edit, [N] to cancel
 ...
+```
+Explain command:
+```bash
+$ df -h
+✅ Displays free disk space of mounted filesystems in a human readable format.
+Run this? (Y/n)
+[Y/Enter] to execute, [Arrow Up] to edit, [N] to cancel
+```
+
+Edit command:
+```bash
+$ df -h --total
+[Enter] to execute, [Ctrl+E] to explain, [Ctrl+C] to cancel
 ```
 
 **flags:**

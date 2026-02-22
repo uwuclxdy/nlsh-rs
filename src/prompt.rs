@@ -43,24 +43,25 @@ pub fn create_system_prompt(user_request: &str, template: Option<&str>) -> Strin
 }
 
 pub const DEFAULT_EXPLAIN_PROMPT: &str =
-    "You are a concise command-line assistant. Your task is to explain shell commands in a single simple sentence, focusing on the main purpose and key flags.
+    "You are a concise command-line assistant. Your task is to explain the given shell command in a single simple sentence, focusing on the main purpose and key flags.
+
+The command to explain is: {command}
 
 Formatting rules:
 - Always start the response with a single safety emoji: ✅ (safe), ⚠️ (risky), or ❌ (dangerous).
 - No other emojis are allowed.
 - For ✅ commands: Output ONLY the emoji and the explanation.
 - For ⚠️ or ❌ commands: Output the emoji, the explanation, and a short warning about the danger.
+- Do NOT include the command in your response.
 - Do NOT include any markdown, backticks, or code formatting.
 - You may emphasise important words with ONLY the following html tags: `<b></b>`, `<i></i>`, `<u></u>`. No other formatting allowed.
 
 Examples:
-Command: ls -la
-✅ Lists all files and directories in the current folder, including hidden ones, in a detailed format.
+Input command: ls -la
+Output: ✅ Lists all files and directories in the current folder, including hidden ones, in a detailed format.
 
-Command: rm -rf /
-❌ Forcefully and recursively <b>deletes all files</b> and directories starting from the root. <b>Warning:</b> This will completely destroy your operating system.
-
-Command: {command}";
+Input command: rm -rf /
+Output: ❌ Forcefully and recursively <b>deletes all files</b> and directories starting from the root. <b>Warning:</b> This will completely destroy your operating system.";
 
 pub fn create_explain_prompt(command: &str, template: Option<&str>) -> String {
     let tmpl = template.unwrap_or(DEFAULT_EXPLAIN_PROMPT);
@@ -89,6 +90,23 @@ pub fn clean_response(response: &str) -> String {
     }
 
     cleaned.trim().to_string()
+}
+
+pub fn clean_explanation(response: &str, command: &str) -> String {
+    let trimmed = response.trim();
+    let cmd_trimmed = command.trim();
+
+    // Remove leading command if present
+    if trimmed.starts_with(cmd_trimmed) {
+        let after = &trimmed[cmd_trimmed.len()..];
+        if after.starts_with('\n') || after.starts_with(' ') || after.is_empty() {
+            after.trim_start().to_string()
+        } else {
+            trimmed.to_string()
+        }
+    } else {
+        trimmed.to_string()
+    }
 }
 
 pub fn create_prompts() {
@@ -149,5 +167,23 @@ mod tests {
     fn create_explain_prompt_handles_multiword_command() {
         let result = create_explain_prompt("git log --oneline", Some("{command}"));
         assert_eq!(result, "git log --oneline");
+    }
+
+    #[test]
+    fn clean_explanation_removes_leading_command() {
+        let result = clean_explanation("free -h\nShows memory usage.", "free -h");
+        assert_eq!(result, "Shows memory usage.");
+    }
+
+    #[test]
+    fn clean_explanation_leaves_unrelated_response() {
+        let result = clean_explanation("Shows memory usage.", "free -h");
+        assert_eq!(result, "Shows memory usage.");
+    }
+
+    #[test]
+    fn clean_explanation_handles_command_with_space() {
+        let result = clean_explanation("free -h Shows memory usage.", "free -h");
+        assert_eq!(result, "Shows memory usage.");
     }
 }

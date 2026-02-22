@@ -3,6 +3,10 @@ use std::fs;
 use std::io;
 use std::process::Command;
 
+use nix::libc;
+use strip_ansi_escapes::strip;
+use unicode_width::UnicodeWidthStr;
+
 // ====================
 // environment helpers
 // ====================
@@ -113,9 +117,15 @@ pub fn clear_line_with_spaces(width: usize) {
     flush_stderr();
 }
 
-/// clears the current line and moves cursor up by the specified number of lines.
-pub fn clear_lines(count: usize) {
-    for _ in 0..count {
+/// clears exactly `n` visual lines from the terminal, starting at the current
+/// cursor line and moving upward. the cursor is assumed to be on the last of
+/// these `n` lines (e.g. after an `eprint!` without newline).
+pub fn clear_n_lines(n: usize) {
+    if n == 0 {
+        return;
+    }
+    eprint!("\r\x1b[K");
+    for _ in 0..n.saturating_sub(1) {
         eprint!("\x1b[1A\x1b[K");
     }
     flush_stderr();
@@ -130,6 +140,47 @@ pub fn eprint_flush(msg: &str) {
 /// flushes stderr to ensure output is displayed.
 pub fn flush_stderr() {
     let _ = io::Write::flush(&mut io::stderr());
+}
+
+/// gets the terminal width in columns.
+#[cfg(unix)]
+pub fn get_terminal_width() -> usize {
+    unsafe {
+        let mut ws: libc::winsize = std::mem::zeroed();
+        if libc::ioctl(libc::STDERR_FILENO, libc::TIOCGWINSZ, &mut ws) == 0 && ws.ws_col > 0 {
+            return ws.ws_col as usize;
+        }
+    }
+    80
+}
+
+#[cfg(not(unix))]
+pub fn get_terminal_width() -> usize {
+    Command::new("tput")
+        .arg("cols")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(80)
+}
+
+/// counts the number of visual lines a string will occupy when printed to terminal.
+pub fn count_visual_lines(text: &str, width: usize) -> usize {
+    text.lines()
+        .map(|line| {
+            if line.is_empty() {
+                1
+            } else {
+                // Strip ANSI escape codes to get only visible characters
+                let stripped = strip(line.as_bytes());
+                let visible_line = String::from_utf8_lossy(&stripped);
+                // Calculate visual width accounting for wide characters
+                let visual_width = visible_line.width();
+                (visual_width + width - 1) / width
+            }
+        })
+        .sum()
 }
 
 // ====================

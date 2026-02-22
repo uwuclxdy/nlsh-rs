@@ -186,6 +186,9 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
 }
 
 pub fn is_interactive_terminal() -> bool {
+    if std::env::var("NLSH_FORCE_INTERACTIVE").is_ok() {
+        return true;
+    }
     std::io::stdin().is_terminal()
 }
 
