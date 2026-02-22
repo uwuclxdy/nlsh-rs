@@ -1,9 +1,9 @@
 [package]
 name = "nlsh-rs"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "MIT"
-description = "translate natural language to shell commands using AI"
+description = "Translate words to commands using AI within your terminal."
 homepage = "https://github.com/uwuclxdy/nlsh-rs"
 repository = "https://github.com/uwuclxdy/nlsh-rs"
 readme = "README.md"
