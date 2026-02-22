@@ -63,14 +63,16 @@ Run this? (Y/n)
 
 Edit command:
 ```bash
-$ df -h --total
-[Enter] to execute, [Ctrl+E] to explain, [Ctrl+C] to cancel
+$ df -h --total▉
+[Enter] to confirm, [Ctrl+C] to quit
 ```
 
-**flags:**
+**subcommands:**
 - `--help` - show help
 - `api` - configure API provider
 - `uninstall` - remove nlsh-rs
+- `prompt` - show/edit the prompt templates
+- `explain` - explain a command
 
 ## How it works
 
@@ -80,8 +82,9 @@ $ df -h --total
 
 ## TODO
 
-[ ] support for rotation of multiple API keys in case of rate limits
-[ ] support for providing more context to the model
+- [ ] support for rotation of multiple API keys in case of rate limits
+- [ ] give more context to the model about the machine
+- [ ] access to nlsh-rs's commands inside interactive mode with `/`.
 
 ## Credits
 
