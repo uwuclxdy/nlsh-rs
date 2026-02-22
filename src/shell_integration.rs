@@ -11,7 +11,19 @@ pub fn generate_bash_autocomplete() -> &'static str {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [ $COMP_CWORD -eq 1 ]; then
-        COMPREPLY=( $(compgen -W "api uninstall --help --version" -- "$cur") )
+        COMPREPLY=( $(compgen -W "api prompt explain uninstall --help --version" -- "$cur") )
+    elif [ $COMP_CWORD -eq 2 ]; then
+        case "$prev" in
+            prompt)
+                COMPREPLY=( $(compgen -W "system explain" -- "$cur") )
+                ;;
+        esac
+    elif [ $COMP_CWORD -eq 3 ]; then
+        case "${COMP_WORDS[1]}" in
+            prompt)
+                COMPREPLY=( $(compgen -W "show edit" -- "$cur") )
+                ;;
+        esac
     fi
     return 0
 }
@@ -25,6 +37,8 @@ _nlsh_rs() {
     local -a commands
     commands=(
         'api:configure API provider (Gemini, Ollama, LM Studio, OpenAI)'
+        'explain:explain a shell command'
+        'prompt:view or edit system/explain prompts'
         'uninstall:uninstall nlsh-rs'
     )
 
@@ -38,6 +52,22 @@ _nlsh_rs() {
         cmds)
             _describe -t commands 'nlsh-rs commands' commands
             ;;
+        args)
+            case "${words[1]}" in
+                prompt)
+                    local -a kinds actions
+                    kinds=('system:system prompt' 'explain:explain prompt')
+                    actions=('show:show prompt' 'edit:edit prompt')
+                    _arguments \
+                        '1: :->kind' \
+                        '2: :->action'
+                    case "$state" in
+                        kind) _describe -t kinds 'prompt kind' kinds ;;
+                        action) _describe -t actions 'prompt action' actions ;;
+                    esac
+                    ;;
+            esac
+            ;;
     esac
 }
 
@@ -48,9 +78,14 @@ pub fn generate_fish_autocomplete() -> &'static str {
     r#"# nlsh-rs autocomplete
 complete -c nlsh-rs -f
 complete -c nlsh-rs -n "__fish_use_subcommand" -a api -d 'configure API provider (Gemini, Ollama, LM Studio, OpenAI)'
+complete -c nlsh-rs -n "__fish_use_subcommand" -a explain -d 'explain a shell command'
+complete -c nlsh-rs -n "__fish_use_subcommand" -a prompt -d 'view or edit system/explain prompts'
 complete -c nlsh-rs -n "__fish_use_subcommand" -a uninstall -d 'uninstall nlsh-rs'
 complete -c nlsh-rs -l help -d 'show help information'
-complete -c nlsh-rs -l version -d 'show version information'"#
+complete -c nlsh-rs -l version -d 'show version information'
+complete -c nlsh-rs -n "__fish_seen_subcommand_from prompt" -a system -d 'system prompt'
+complete -c nlsh-rs -n "__fish_seen_subcommand_from prompt" -a explain -d 'explain prompt'
+complete -c nlsh-rs -n "__fish_seen_subcommand_from prompt; and __fish_seen_subcommand_from system explain" -a "show edit" -d 'prompt action'"#
 }
 
 pub fn generate_bash_function() -> &'static str {
@@ -106,6 +141,82 @@ pub fn auto_setup_shell_function() -> Result<bool, Box<dyn std::error::Error>> {
 fn verify_and_fix_integrations() -> Result<(), Box<dyn std::error::Error>> {
     verify_and_fix_bash_integration()?;
     verify_and_fix_fish_integration()?;
+    verify_and_fix_autocomplete()?;
+    Ok(())
+}
+
+fn verify_and_fix_autocomplete() -> Result<(), Box<dyn std::error::Error>> {
+    verify_and_fix_bash_autocomplete()?;
+    verify_and_fix_zsh_autocomplete()?;
+    verify_and_fix_fish_autocomplete()?;
+    Ok(())
+}
+
+fn verify_and_fix_bash_autocomplete() -> Result<(), Box<dyn std::error::Error>> {
+    let home = get_home_dir();
+    let completion_path = home.join(".local/share/bash-completion/completions/nlsh-rs");
+
+    if !completion_path.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&completion_path)?;
+    let expected = generate_bash_autocomplete();
+
+    if !content.contains(expected) {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&completion_path)?;
+        writeln!(file, "# nlsh-rs bash autocomplete")?;
+        writeln!(file, "{}", expected)?;
+    }
+
+    Ok(())
+}
+
+fn verify_and_fix_zsh_autocomplete() -> Result<(), Box<dyn std::error::Error>> {
+    let home = get_home_dir();
+    let completion_path = home.join(".local/share/zsh/site-functions/_nlsh-rs");
+
+    if !completion_path.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&completion_path)?;
+    let expected = generate_zsh_autocomplete();
+
+    if !content.contains(expected) {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&completion_path)?;
+        writeln!(file, "# nlsh-rs zsh autocomplete")?;
+        writeln!(file, "{}", expected)?;
+    }
+
+    Ok(())
+}
+
+fn verify_and_fix_fish_autocomplete() -> Result<(), Box<dyn std::error::Error>> {
+    let home = get_home_dir();
+    let completion_path = home.join(".config/fish/completions/nlsh-rs.fish");
+
+    if !completion_path.exists() {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(&completion_path)?;
+    let expected = generate_fish_autocomplete();
+
+    if !content.contains(expected) {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&completion_path)?;
+        writeln!(file, "{}", expected)?;
+    }
+
     Ok(())
 }
 
@@ -305,7 +416,7 @@ fn setup_bash_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
     let completion_path = completion_dir.join("nlsh-rs");
 
     if completion_path.exists() {
-        return Ok(false);
+        return Ok(false); // already handled by verify_and_fix_bash_autocomplete
     }
 
     fs::create_dir_all(&completion_dir)?;
@@ -333,7 +444,7 @@ fn setup_zsh_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
     let completion_path = completion_dir.join("_nlsh-rs");
 
     if completion_path.exists() {
-        return Ok(false);
+        return Ok(false); // already handled by verify_and_fix_zsh_autocomplete
     }
 
     fs::create_dir_all(&completion_dir)?;
@@ -369,7 +480,7 @@ fn setup_fish_autocomplete() -> Result<bool, Box<dyn std::error::Error>> {
     let completion_path = completion_dir.join("nlsh-rs.fish");
 
     if completion_path.exists() {
-        return Ok(false);
+        return Ok(false); // already handled by verify_and_fix_fish_autocomplete
     }
 
     fs::create_dir_all(&completion_dir)?;
