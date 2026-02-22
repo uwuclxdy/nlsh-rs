@@ -3,7 +3,7 @@ use colored::*;
 use crate::cli::{is_interactive_terminal, print_error_with_message};
 use crate::common::{
     clear_n_lines, count_visual_lines, exit_with_code, flush_stderr, get_terminal_width,
-    show_cursor,
+    show_cursor, ANSI_CLEAR_LINE, EXIT_SIGINT,
 };
 
 pub enum ConfirmResult {
@@ -31,41 +31,41 @@ enum KeyEvent {
 
 /// Parse one logical key event from any `Read` source. Works on both raw-mode
 /// terminals and plain pipes (e.g. during tests with piped stdin).
-fn parse_key_from_reader(r: &mut impl std::io::Read) -> KeyEvent {
-    let mut b = [0u8; 1];
-    if r.read(&mut b).unwrap_or(0) == 0 {
+fn parse_key_from_reader(reader: &mut impl std::io::Read) -> KeyEvent {
+    let mut key_byte = [0u8; 1];
+    if reader.read(&mut key_byte).unwrap_or(0) == 0 {
         return KeyEvent::Eof;
     }
-    match b[0] {
+    match key_byte[0] {
         b'\n' | b'\r' => KeyEvent::Enter,
         b'\x03' => KeyEvent::CtrlC,
         127 | b'\x08' => KeyEvent::Backspace,
         b'\x1b' => {
-            if r.read(&mut b).unwrap_or(0) == 0 {
+            if reader.read(&mut key_byte).unwrap_or(0) == 0 {
                 return KeyEvent::Eof;
             }
-            if b[0] != b'[' {
+            if key_byte[0] != b'[' {
                 return KeyEvent::Other;
             }
-            if r.read(&mut b).unwrap_or(0) == 0 {
+            if reader.read(&mut key_byte).unwrap_or(0) == 0 {
                 return KeyEvent::Eof;
             }
-            match b[0] {
+            match key_byte[0] {
                 b'A' => KeyEvent::ArrowUp,
                 b'C' => KeyEvent::Right,
                 b'D' => KeyEvent::Left,
                 b'H' => KeyEvent::Home,
                 b'F' => KeyEvent::End,
                 b'3' => {
-                    let _ = r.read(&mut b); // consume '~'
+                    let _ = reader.read(&mut key_byte); // consume '~'
                     KeyEvent::Delete
                 }
                 b'1' => {
-                    let _ = r.read(&mut b); // consume '~'
+                    let _ = reader.read(&mut key_byte); // consume '~'
                     KeyEvent::Home
                 }
                 b'4' => {
-                    let _ = r.read(&mut b); // consume '~'
+                    let _ = reader.read(&mut key_byte); // consume '~'
                     KeyEvent::End
                 }
                 _ => KeyEvent::Other,
@@ -156,7 +156,7 @@ fn style_html_tags(text: &str) -> String {
 
 /// Prompt for confirmation with explain option
 pub fn confirm_with_explain(
-    display_lines: usize,
+    cmd_line_count: usize,
 ) -> Result<ConfirmResult, Box<dyn std::error::Error>> {
     if !is_interactive_terminal() {
         return Ok(ConfirmResult::Yes);
@@ -165,7 +165,7 @@ pub fn confirm_with_explain(
     let prompt_lines = confirmation_prompt(true);
     flush_stderr();
 
-    let total = display_lines + prompt_lines;
+    let lines_to_clear = cmd_line_count + prompt_lines;
 
     loop {
         match read_key_event() {
@@ -178,39 +178,35 @@ pub fn confirm_with_explain(
                 return Ok(ConfirmResult::Explain);
             }
             KeyEvent::ArrowUp => {
-                clear_n_lines(total);
+                clear_n_lines(lines_to_clear);
                 return Ok(ConfirmResult::Edit);
             }
             KeyEvent::Char('n' | 'N') => {
-                clear_n_lines(total);
+                clear_n_lines(lines_to_clear);
                 return Ok(ConfirmResult::Cancel);
             }
             KeyEvent::CtrlC => {
-                clear_n_lines(total);
+                clear_n_lines(lines_to_clear);
                 show_cursor();
-                exit_with_code(130);
+                exit_with_code(EXIT_SIGINT);
             }
             KeyEvent::Eof => {
-                clear_n_lines(total);
+                clear_n_lines(lines_to_clear);
                 show_cursor();
                 return Ok(ConfirmResult::No);
             }
-            KeyEvent::Other => {
-                // ignore unrecognised keys
-            }
-            _ => {
-                // ignore undefined keys
-            }
+            KeyEvent::Other => {}
+            _ => {}
         }
     }
 }
 
 /// Prompt without the explain option.
-/// `cmd_lines` = persistent command lines (kept on Y/Enter).
-/// `expl_lines` = ephemeral explanation lines (cleared on Y/Enter).
+/// `cmd_line_count` = persistent command lines (kept on Y/Enter).
+/// `expl_line_count` = ephemeral explanation lines (cleared on Y/Enter).
 pub fn confirm_execution(
-    cmd_lines: usize,
-    expl_lines: usize,
+    cmd_line_count: usize,
+    expl_line_count: usize,
 ) -> Result<ConfirmResult, Box<dyn std::error::Error>> {
     if !is_interactive_terminal() {
         return Ok(ConfirmResult::Yes);
@@ -219,38 +215,34 @@ pub fn confirm_execution(
     let prompt_lines = confirmation_prompt(false);
     flush_stderr();
 
-    let total = cmd_lines + expl_lines + prompt_lines;
+    let lines_to_clear = cmd_line_count + expl_line_count + prompt_lines;
 
     loop {
         match read_key_event() {
             KeyEvent::Enter | KeyEvent::Char('y' | 'Y') => {
-                clear_n_lines(expl_lines + prompt_lines);
+                clear_n_lines(expl_line_count + prompt_lines);
                 return Ok(ConfirmResult::Yes);
             }
             KeyEvent::ArrowUp => {
-                clear_n_lines(total);
+                clear_n_lines(lines_to_clear);
                 return Ok(ConfirmResult::Edit);
             }
             KeyEvent::Char('n' | 'N') => {
-                clear_n_lines(total);
+                clear_n_lines(lines_to_clear);
                 return Ok(ConfirmResult::Cancel);
             }
             KeyEvent::CtrlC => {
-                clear_n_lines(total);
+                clear_n_lines(lines_to_clear);
                 show_cursor();
-                exit_with_code(130);
+                exit_with_code(EXIT_SIGINT);
             }
             KeyEvent::Eof => {
-                clear_n_lines(total);
+                clear_n_lines(lines_to_clear);
                 show_cursor();
                 return Ok(ConfirmResult::No);
             }
-            KeyEvent::Other => {
-                // ignore unrecognised keys
-            }
-            _ => {
-                // ignore undefined keys
-            }
+            KeyEvent::Other => {}
+            _ => {}
         }
     }
 }
@@ -336,7 +328,7 @@ pub fn edit_command(current: &str) -> Option<String> {
     let redraw = |buf: &[char], pos: usize| {
         let s: String = buf.iter().collect();
         // cursor is on the command line; clear it and redraw
-        eprint!("\r\x1b[K{} {}", "$".cyan(), s.bright_white().bold());
+        eprint!("{}{} {}", ANSI_CLEAR_LINE, "$".cyan(), s.bright_white().bold());
         eprint!("\x1b[{}G", 3 + pos);
         flush_stderr();
     };
@@ -352,7 +344,7 @@ pub fn edit_command(current: &str) -> Option<String> {
                 clear_editor(&buf);
                 flush_stderr();
                 show_cursor();
-                exit_with_code(130);
+                exit_with_code(EXIT_SIGINT);
             }
             KeyEvent::Backspace => {
                 if pos > 0 {

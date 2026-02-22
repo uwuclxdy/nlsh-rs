@@ -53,14 +53,7 @@ impl AIProvider for OllamaProvider {
             .await
             .map_err(|e| NlshError::from_reqwest(e, "ollama"))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown error".to_string());
-            return Err(NlshError::from_http_status(status, "ollama", &error_text));
-        }
+        let response = BaseProvider::check_response(response, "ollama").await?;
 
         let ollama_response: OllamaResponse = response
             .json()

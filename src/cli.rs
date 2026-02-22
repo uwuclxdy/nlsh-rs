@@ -5,11 +5,7 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::Command;
 
-// ====================
-// ascii symbols
-// ====================
-
-const SYMBOL_CHECK: &str = "✓";
+const SYMBOL_CHECK: &str = "\u{2713}";
 const SYMBOL_ERROR: &str = "error:";
 const SYMBOL_WARNING: &str = "warning:";
 
@@ -28,10 +24,6 @@ pub fn print_error_with_message(message: &str) {
 pub fn print_warning_with_message(message: &str) {
     eprintln!("{} {}", SYMBOL_WARNING.yellow(), message);
 }
-
-// ====================
-// cli argument parsing
-// ====================
 
 #[derive(Debug)]
 pub struct CliArgs {
@@ -131,10 +123,6 @@ pub fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     })
 }
 
-// ====================
-// command execution
-// ====================
-
 pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
     let trimmed = command.trim();
 
@@ -192,10 +180,6 @@ pub fn is_interactive_terminal() -> bool {
     std::io::stdin().is_terminal()
 }
 
-// ====================
-// user prompts
-// ====================
-
 pub fn prompt_select(
     prompt: &str,
     items: &[String],
@@ -220,10 +204,6 @@ pub fn prompt_input_with_default(
 ) -> Result<String, Box<dyn std::error::Error>> {
     Ok(Text::new(prompt).with_default(default).prompt()?)
 }
-
-// ====================
-// file path helpers
-// ====================
 
 pub fn get_home_dir() -> PathBuf {
     env::var("HOME")

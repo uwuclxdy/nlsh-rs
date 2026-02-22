@@ -13,7 +13,7 @@ pub trait AIProvider: Send + Sync {
 }
 
 pub fn create_provider(config: &Config) -> Result<Box<dyn AIProvider>, NlshError> {
-    let provider = config.get_provider_config();
+    let provider = config.get_provider_config()?;
     match &provider.config {
         ProviderSpecificConfig::Gemini { gemini } => {
             Ok(Box::new(gemini::GeminiProvider::new(gemini)?))

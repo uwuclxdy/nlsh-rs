@@ -7,18 +7,18 @@ use nix::libc;
 use strip_ansi_escapes::strip;
 use unicode_width::UnicodeWidthStr;
 
-// ====================
-// environment helpers
-// ====================
+pub const EXIT_SIGINT: i32 = 130;
 
-/// returns the current working directory.
+pub const ANSI_SHOW_CURSOR: &str = "\x1b[?25h";
+pub const ANSI_CLEAR_LINE: &str = "\r\x1b[K";
+pub const ANSI_CURSOR_UP_CLEAR: &str = "\x1b[1A\x1b[K";
+
 pub fn get_current_directory() -> String {
     env::current_dir()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "/".to_string())
 }
 
-/// returns the operating system name.
 pub fn get_os() -> String {
     if cfg!(target_os = "linux") {
         get_linux_info()
@@ -31,7 +31,6 @@ pub fn get_os() -> String {
     }
 }
 
-/// returns the current shell name.
 pub fn get_shell() -> String {
     env::var("SHELL")
         .ok()
@@ -39,16 +38,11 @@ pub fn get_shell() -> String {
         .unwrap_or_else(|| "sh".to_string())
 }
 
-/// returns the current username.
 pub fn get_username() -> String {
     env::var("USER")
         .or_else(|_| env::var("USERNAME"))
         .unwrap_or_else(|_| "user".to_string())
 }
-
-// ====================
-// process & execution helpers
-// ====================
 
 /// returns linux distro and kernel version.
 fn get_linux_info() -> String {
@@ -95,27 +89,16 @@ fn get_kernel_version() -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-// ====================
-// terminal control helpers
-// ====================
-
-/// shows the cursor on stderr.
 pub fn show_cursor() {
-    eprint!("\x1b[?25h");
+    eprint!("{}", ANSI_SHOW_CURSOR);
     flush_stderr();
 }
 
-/// clears the current line on stderr (from cursor to end of line).
 pub fn clear_line() {
-    eprint!("\r\x1b[K");
+    eprint!("{}", ANSI_CLEAR_LINE);
     flush_stderr();
 }
 
-/// clears current line by filling it with spaces and returning to start.
-pub fn clear_line_with_spaces(width: usize) {
-    eprint!("\r{}\r", " ".repeat(width));
-    flush_stderr();
-}
 
 /// clears exactly `n` visual lines from the terminal, starting at the current
 /// cursor line and moving upward. the cursor is assumed to be on the last of
@@ -124,20 +107,18 @@ pub fn clear_n_lines(n: usize) {
     if n == 0 {
         return;
     }
-    eprint!("\r\x1b[K");
+    eprint!("{}", ANSI_CLEAR_LINE);
     for _ in 0..n.saturating_sub(1) {
-        eprint!("\x1b[1A\x1b[K");
+        eprint!("{}", ANSI_CURSOR_UP_CLEAR);
     }
     flush_stderr();
 }
 
-/// prints a message to stderr and flushes immediately.
 pub fn eprint_flush(msg: &str) {
     eprint!("{}", msg);
     flush_stderr();
 }
 
-/// flushes stderr to ensure output is displayed.
 pub fn flush_stderr() {
     let _ = io::Write::flush(&mut io::stderr());
 }
@@ -183,11 +164,6 @@ pub fn count_visual_lines(text: &str, width: usize) -> usize {
         .sum()
 }
 
-// ====================
-// process & execution helpers
-// ====================
-
-/// exits the process with the given exit code.
 pub fn exit_with_code(code: i32) -> ! {
     std::process::exit(code);
 }

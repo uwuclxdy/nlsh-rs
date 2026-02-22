@@ -34,6 +34,12 @@ pub enum NlshError {
 
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
+
+    #[error("request cancelled")]
+    Cancelled,
+
+    #[error("empty response from provider")]
+    EmptyResponse,
 }
 
 impl NlshError {

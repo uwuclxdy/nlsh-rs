@@ -5,6 +5,8 @@ use crate::providers::base::BaseProvider;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+const DEFAULT_TEMPERATURE: f32 = 0.7;
+
 pub struct OpenAIProvider {
     base: BaseProvider,
     base_url: String,
@@ -66,36 +68,20 @@ impl AIProvider for OpenAIProvider {
                 role: "user".to_string(),
                 content: prompt.to_string(),
             }],
-            temperature: 0.7,
+            temperature: DEFAULT_TEMPERATURE,
         };
 
-        let response = if let Some(ref api_key) = self.api_key {
-            self.base
-                .client
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", api_key))
-                .json(&request_body)
-                .send()
-                .await
-                .map_err(|e| NlshError::from_reqwest(e, "openai"))?
-        } else {
-            self.base
-                .client
-                .post(&url)
-                .json(&request_body)
-                .send()
-                .await
-                .map_err(|e| NlshError::from_reqwest(e, "openai"))?
-        };
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown error".to_string());
-            return Err(NlshError::from_http_status(status, "openai", &error_text));
+        let mut request = self.base.client.post(&url).json(&request_body);
+        if let Some(ref api_key) = self.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
         }
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| NlshError::from_reqwest(e, "openai"))?;
+
+        let response = BaseProvider::check_response(response, "openai").await?;
 
         let chat_response: ChatResponse = response
             .json()

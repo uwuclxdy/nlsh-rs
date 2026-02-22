@@ -8,6 +8,7 @@ use crate::cli::{
     print_check_with_bold_message, prompt_input, prompt_input_with_default, prompt_select,
 };
 use crate::common::clear_line;
+use crate::error::NlshError;
 mod migration;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -19,39 +20,54 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn get_provider_config(&self) -> ProviderConfig {
+    pub fn get_provider_config(&self) -> Result<ProviderConfig, NlshError> {
         match self.active_provider.as_str() {
-            "gemini" => ProviderConfig {
+            "gemini" => Ok(ProviderConfig {
                 provider_type: "gemini".to_string(),
                 config: ProviderSpecificConfig::Gemini {
                     gemini: self
                         .providers
                         .gemini
                         .clone()
-                        .expect("gemini config not found for active provider"),
+                        .ok_or_else(|| {
+                            NlshError::ConfigError(
+                                "gemini config not found for active provider".to_string(),
+                            )
+                        })?,
                 },
-            },
-            "ollama" => ProviderConfig {
+            }),
+            "ollama" => Ok(ProviderConfig {
                 provider_type: "ollama".to_string(),
                 config: ProviderSpecificConfig::Ollama {
                     ollama: self
                         .providers
                         .ollama
                         .clone()
-                        .expect("ollama config not found for active provider"),
+                        .ok_or_else(|| {
+                            NlshError::ConfigError(
+                                "ollama config not found for active provider".to_string(),
+                            )
+                        })?,
                 },
-            },
-            "openai" => ProviderConfig {
+            }),
+            "openai" => Ok(ProviderConfig {
                 provider_type: "openai".to_string(),
                 config: ProviderSpecificConfig::OpenAI {
                     openai: self
                         .providers
                         .openai
                         .clone()
-                        .expect("openai config not found for active provider"),
+                        .ok_or_else(|| {
+                            NlshError::ConfigError(
+                                "openai config not found for active provider".to_string(),
+                            )
+                        })?,
                 },
-            },
-            _ => panic!("unknown provider type: {}", self.active_provider),
+            }),
+            _ => Err(NlshError::ConfigError(format!(
+                "unknown provider type: {}",
+                self.active_provider
+            ))),
         }
     }
 }
@@ -82,6 +98,16 @@ pub enum ProviderSpecificConfig {
     OpenAI { openai: OpenAIConfig },
 }
 
+impl ProviderSpecificConfig {
+    pub fn model(&self) -> &str {
+        match self {
+            ProviderSpecificConfig::Gemini { gemini } => &gemini.model,
+            ProviderSpecificConfig::Ollama { ollama } => &ollama.model,
+            ProviderSpecificConfig::OpenAI { openai } => &openai.model,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GeminiConfig {
     pub api_key: String,
@@ -102,7 +128,7 @@ pub struct OpenAIConfig {
     pub model: String,
 }
 
-pub fn get_config_dir() -> PathBuf {
+pub fn ensure_config_dir() -> PathBuf {
     let config_dir = dirs::config_dir()
         .expect("failed to get config directory")
         .join("nlsh-rs");
@@ -111,11 +137,11 @@ pub fn get_config_dir() -> PathBuf {
 }
 
 fn get_config_path() -> PathBuf {
-    get_config_dir().join("config.toml")
+    ensure_config_dir().join("config.toml")
 }
 
 pub fn get_sys_prompt_path() -> PathBuf {
-    get_config_dir().join("sys-prompt.txt")
+    ensure_config_dir().join("sys-prompt.txt")
 }
 
 pub fn load_sys_prompt() -> Option<String> {
@@ -127,7 +153,7 @@ pub fn save_sys_prompt(content: &str) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 pub fn get_explain_prompt_path() -> PathBuf {
-    get_config_dir().join("explain-prompt.txt")
+    ensure_config_dir().join("explain-prompt.txt")
 }
 
 pub fn load_explain_prompt() -> Option<String> {
@@ -238,12 +264,20 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     save_config(&config)?;
+    display_config_summary(&config, providers[selection].0)?;
 
+    Ok(())
+}
+
+fn display_config_summary(
+    config: &Config,
+    provider_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     print_check_with_bold_message("Configuration saved!");
     eprintln!();
-    eprintln!("Provider: {}", providers[selection].0);
+    eprintln!("Provider: {}", provider_name);
 
-    let provider_config = config.get_provider_config();
+    let provider_config = config.get_provider_config()?;
     match &provider_config.config {
         ProviderSpecificConfig::Gemini { gemini } => {
             eprintln!("Model: {}", gemini.model);
@@ -291,7 +325,7 @@ fn configure_ollama(
         .unwrap_or("http://localhost:11434");
     let base_url = prompt_input_with_default("Ollama base URL", url_default)?;
 
-    let model = set_model_name(existing.map(|e| e.model.as_str()))?;
+    let model = prompt_model_name(existing.map(|e| e.model.as_str()))?;
 
     Ok(ProviderConfig {
         provider_type: "ollama".to_string(),
@@ -318,7 +352,7 @@ fn configure_openai(
         text.prompt_skippable()?
     };
 
-    let model = set_model_name(existing.map(|e| e.model.as_str()))?;
+    let model = prompt_model_name(existing.map(|e| e.model.as_str()))?;
 
     Ok(ProviderConfig {
         provider_type: "openai".to_string(),
@@ -332,7 +366,7 @@ fn configure_openai(
     })
 }
 
-fn set_model_name(default: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
+fn prompt_model_name(default: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
     let model = if let Some(def) = default {
         prompt_input_with_default("Model name:", def)?
     } else {
@@ -341,7 +375,7 @@ fn set_model_name(default: Option<&str>) -> Result<String, Box<dyn std::error::E
 
     if model.trim().is_empty() {
         eprintln!("{}", "Model name cannot be empty".red());
-        return set_model_name(default);
+        return prompt_model_name(default);
     }
 
     Ok(model)

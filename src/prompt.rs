@@ -109,16 +109,20 @@ pub fn clean_explanation(response: &str, command: &str) -> String {
     }
 }
 
-pub fn create_prompts() {
+pub fn create_prompts() -> Result<(), std::io::Error> {
     let path = get_sys_prompt_path();
     if !path.exists() {
-        save_sys_prompt(DEFAULT_PROMPT_TEMPLATE).unwrap();
+        save_sys_prompt(DEFAULT_PROMPT_TEMPLATE)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
     }
 
     let path = get_explain_prompt_path();
     if !path.exists() {
-        save_explain_prompt(DEFAULT_EXPLAIN_PROMPT).unwrap();
+        save_explain_prompt(DEFAULT_EXPLAIN_PROMPT)
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
     }
+
+    Ok(())
 }
 
 #[cfg(test)]

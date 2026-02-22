@@ -30,4 +30,20 @@ impl BaseProvider {
             client: create_http_client()?,
         })
     }
+
+    /// checks an HTTP response status and returns an appropriate error for non-success codes.
+    pub async fn check_response(
+        response: reqwest::Response,
+        provider: &str,
+    ) -> Result<reqwest::Response, NlshError> {
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "unknown error".to_string());
+            return Err(NlshError::from_http_status(status, provider, &error_text));
+        }
+        Ok(response)
+    }
 }
