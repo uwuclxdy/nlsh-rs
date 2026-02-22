@@ -1,4 +1,4 @@
-# nlsh-rs - Natural Language Shell written in Rust
+# nlsh-rs - Natural Language Shell
 
 [![asciicast](https://asciinema.org/a/772400.svg)](https://asciinema.org/a/772400)
 
