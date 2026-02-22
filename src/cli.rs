@@ -43,7 +43,19 @@ pub struct CliArgs {
 pub enum Subcommands {
     Api,
     Uninstall,
-    Prompt { action: PromptAction },
+    Prompt {
+        kind: PromptKind,
+        action: PromptAction,
+    },
+    Explain {
+        command: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum PromptKind {
+    System,
+    Explain,
 }
 
 #[derive(Debug, Clone)]
@@ -72,9 +84,20 @@ pub fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
         Api,
         Uninstall,
         Prompt {
+            #[arg(value_enum, default_value_t = ClapPromptKind::System)]
+            kind: ClapPromptKind,
             #[arg(value_enum, default_value_t = ClapPromptAction::Show)]
             action: ClapPromptAction,
         },
+        Explain {
+            command: Vec<String>,
+        },
+    }
+
+    #[derive(clap::ValueEnum, Clone)]
+    enum ClapPromptKind {
+        System,
+        Explain,
     }
 
     #[derive(clap::ValueEnum, Clone)]
@@ -88,12 +111,17 @@ pub fn parse_cli_args() -> Result<CliArgs, Box<dyn std::error::Error>> {
     let subcommand = match cli.subcommand {
         Some(Commands::Api) => Some(Subcommands::Api),
         Some(Commands::Uninstall) => Some(Subcommands::Uninstall),
-        Some(Commands::Prompt { action }) => Some(Subcommands::Prompt {
+        Some(Commands::Prompt { kind, action }) => Some(Subcommands::Prompt {
+            kind: match kind {
+                ClapPromptKind::System => PromptKind::System,
+                ClapPromptKind::Explain => PromptKind::Explain,
+            },
             action: match action {
                 ClapPromptAction::Show => PromptAction::Show,
                 ClapPromptAction::Edit => PromptAction::Edit,
             },
         }),
+        Some(Commands::Explain { command }) => Some(Subcommands::Explain { command }),
         None => None,
     };
 

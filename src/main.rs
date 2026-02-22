@@ -18,10 +18,16 @@ use colored::*;
 use common::setup_terminal;
 use common::{clear_line_with_spaces, eprint_flush, exit_with_code};
 use config::{Config, ProviderSpecificConfig, interactive_setup, load_config};
-use confirmation::{confirm_execution, display_command, display_error};
+use confirmation::{
+    ConfirmResult, confirm_execution, confirm_with_explain, display_command, display_error,
+    display_explanation,
+};
 use error::NlshError;
 use interactive::get_user_input;
-use prompt::{DEFAULT_PROMPT_TEMPLATE, clean_response, create_system_prompt, validate_sys_prompt};
+use prompt::{
+    DEFAULT_EXPLAIN_PROMPT, DEFAULT_PROMPT_TEMPLATE, clean_response, create_explain_prompt,
+    create_prompts, create_system_prompt, validate_explain_prompt, validate_sys_prompt,
+};
 use providers::create_provider;
 use shell_integration::auto_setup_shell_function;
 use uninstall::uninstall_nlsh;
@@ -44,6 +50,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         colored::control::set_override(true);
     }
 
+    create_prompts();
+
     match auto_setup_shell_function() {
         Ok(true) => {
             eprintln!(
@@ -58,7 +66,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli = parse_cli_args()?;
 
-    if let Some(command) = cli.subcommand {
+    // handle subcommands that do not need a provider
+    let needs_provider = matches!(cli.subcommand, Some(cli::Subcommands::Explain { .. }));
+    if !needs_provider && let Some(ref command) = cli.subcommand {
         match command {
             cli::Subcommands::Api => {
                 interactive_setup()?;
@@ -68,14 +78,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 uninstall_nlsh()?;
                 return Ok(());
             }
-            cli::Subcommands::Prompt { action } => {
-                match action {
-                    cli::PromptAction::Show => {
+            cli::Subcommands::Prompt { kind, action } => {
+                match (kind, action) {
+                    (cli::PromptKind::System, cli::PromptAction::Show) => {
                         let content = config::load_sys_prompt()
                             .unwrap_or_else(|| DEFAULT_PROMPT_TEMPLATE.to_string());
                         println!("{}", content);
                     }
-                    cli::PromptAction::Edit => {
+                    (cli::PromptKind::System, cli::PromptAction::Edit) => {
                         let path = config::get_sys_prompt_path();
                         if !path.exists() {
                             config::save_sys_prompt(DEFAULT_PROMPT_TEMPLATE)?;
@@ -88,11 +98,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             display_error("sys-prompt must contain the {request} placeholder.");
                         }
                     }
+                    (cli::PromptKind::Explain, cli::PromptAction::Show) => {
+                        let content = config::load_explain_prompt()
+                            .unwrap_or_else(|| DEFAULT_EXPLAIN_PROMPT.to_string());
+                        println!("{}", content);
+                    }
+                    (cli::PromptKind::Explain, cli::PromptAction::Edit) => {
+                        let path = config::get_explain_prompt_path();
+                        if !path.exists() {
+                            config::save_explain_prompt(DEFAULT_EXPLAIN_PROMPT)?;
+                        }
+                        let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
+                        std::process::Command::new(&editor).arg(&path).status()?;
+                        if let Some(saved) = config::load_explain_prompt()
+                            && !validate_explain_prompt(&saved)
+                        {
+                            display_error("explain-prompt must contain the {command} placeholder.");
+                        }
+                    }
                 }
                 return Ok(());
             }
+            cli::Subcommands::Explain { .. } => unreachable!(),
         }
     }
+
+    // move cli.subcommand to extract explain parts (non-explain paths already returned above)
+    let explain_parts = match cli.subcommand {
+        Some(cli::Subcommands::Explain { command }) => Some(command),
+        _ => None,
+    };
 
     let config = match load_config() {
         Ok(cfg) => cfg,
@@ -118,6 +153,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             exit_with_code(1);
         }
     };
+
+    // handle standalone explain subcommand
+    if let Some(cmd_parts) = explain_parts {
+        if cmd_parts.is_empty() {
+            display_error("no command provided.");
+            exit_with_code(1);
+        }
+        let command = cmd_parts.join(" ");
+        let cmd_lines = display_command(&command);
+        let explanation = get_explanation(&command, provider.as_ref())
+            .await
+            .unwrap_or_else(|_| String::new());
+        if explanation.is_empty() {
+            return Ok(());
+        }
+        let expl_lines = display_explanation(&explanation);
+        let confirmed = confirm_execution(cmd_lines + expl_lines)?;
+        if confirmed {
+            println!("{}", command);
+        }
+        return Ok(());
+    }
 
     let interactive_mode = cli.command.is_empty();
 
@@ -204,14 +261,22 @@ async fn process_command_interactive(
         return Err("empty response".into());
     }
 
-    let display_lines = display_command(&command);
+    let cmd_lines = display_command(&command);
 
-    let confirmed = confirm_execution(display_lines)?;
-    if !confirmed {
-        return Ok(());
+    match confirm_with_explain(cmd_lines)? {
+        ConfirmResult::Yes => {
+            execute_shell_command(&command)?;
+        }
+        ConfirmResult::No => {}
+        ConfirmResult::Explain => {
+            let explanation = get_explanation(&command, provider).await?;
+            let expl_lines = display_explanation(&explanation);
+            let confirmed = confirm_execution(cmd_lines + expl_lines)?;
+            if confirmed {
+                execute_shell_command(&command)?;
+            }
+        }
     }
-
-    execute_shell_command(&command)?;
 
     Ok(())
 }
@@ -268,15 +333,68 @@ async fn process_command_single(
         return Err("empty response".into());
     }
 
-    let display_lines = display_command(&command);
+    let cmd_lines = display_command(&command);
 
-    let confirmed = confirm_execution(display_lines)?;
-    if !confirmed {
-        return Ok(());
+    match confirm_with_explain(cmd_lines)? {
+        ConfirmResult::Yes => {
+            println!("{}", command);
+        }
+        ConfirmResult::No => {}
+        ConfirmResult::Explain => {
+            let explanation = get_explanation(&command, provider).await?;
+            let expl_lines = display_explanation(&explanation);
+            let confirmed = confirm_execution(cmd_lines + expl_lines)?;
+            if confirmed {
+                println!("{}", command);
+            }
+        }
     }
 
-    // in single-command mode, print for shell wrapper to execute
-    println!("{}", command);
-
     Ok(())
+}
+
+async fn get_explanation(
+    command: &str,
+    provider: &dyn providers::AIProvider,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let explain_tmpl = config::load_explain_prompt();
+    if let Some(ref t) = explain_tmpl
+        && !validate_explain_prompt(t)
+    {
+        display_error("explain-prompt must contain the {command} placeholder — using default.");
+    }
+    let effective = explain_tmpl
+        .as_deref()
+        .filter(|t| validate_explain_prompt(t));
+    let query = create_explain_prompt(command, effective);
+
+    eprint_flush(&format!("{}", "explaining...".truecolor(128, 128, 128)));
+
+    let cancel_token = CancellationToken::new();
+    let cancel_clone = cancel_token.clone();
+
+    let ctrl_c = tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        cancel_clone.cancel();
+    });
+
+    let result = tokio::select! {
+        res = provider.generate(&query) => {
+            ctrl_c.abort();
+            match res {
+                Ok(r) => r,
+                Err(e) => {
+                    clear_line_with_spaces(50);
+                    return Err(Box::new(e));
+                }
+            }
+        }
+        _ = cancel_token.cancelled() => {
+            clear_line_with_spaces(50);
+            return Err("cancelled".into());
+        }
+    };
+
+    clear_line_with_spaces(50);
+    Ok(result.trim().to_string())
 }

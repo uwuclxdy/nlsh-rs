@@ -126,6 +126,18 @@ pub fn save_sys_prompt(content: &str) -> Result<(), Box<dyn std::error::Error>> 
     Ok(fs::write(get_sys_prompt_path(), content)?)
 }
 
+pub fn get_explain_prompt_path() -> PathBuf {
+    get_config_dir().join("explain-prompt.txt")
+}
+
+pub fn load_explain_prompt() -> Option<String> {
+    fs::read_to_string(get_explain_prompt_path()).ok()
+}
+
+pub fn save_explain_prompt(content: &str) -> Result<(), Box<dyn std::error::Error>> {
+    Ok(fs::write(get_explain_prompt_path(), content)?)
+}
+
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
     let config_path = get_config_path();
     let contents = fs::read_to_string(&config_path)?;
