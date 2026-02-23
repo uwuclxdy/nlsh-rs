@@ -130,45 +130,31 @@ pub fn execute_shell_command(command: &str) -> Result<(), Box<dyn std::error::Er
         return Ok(());
     }
 
-    // expand environment variables in the entire command
-    let expanded = shellexpand::tilde(trimmed);
-    let expanded = shellexpand::env(expanded.as_ref()).unwrap_or_else(|_| expanded.clone());
+    // Run everything through sh -c so tilde expansion, env vars, pipes,
+    // compound operators, and all other shell features work natively.
+    // Append `pwd` to capture the shell's final working directory and
+    // sync it back, so that `cd` (even inside compound commands) propagates
+    // to the parent process.
+    let cwd_file = env::temp_dir().join(format!(".nlsh_cwd_{}", std::process::id()));
+    let script = format!(
+        "{trimmed}\n__nlsh_rc=$?\npwd > {cwd_path}\nexit $__nlsh_rc",
+        cwd_path = cwd_file.display(),
+    );
 
-    if expanded.contains('\n') {
-        Command::new("sh")
-            .arg("-c")
-            .arg(expanded.as_ref())
-            .current_dir(env::current_dir()?)
-            .status()?;
-        return Ok(());
-    }
+    Command::new("sh")
+        .arg("-c")
+        .arg(&script)
+        .current_dir(env::current_dir()?)
+        .status()?;
 
-    let parts: Vec<&str> = expanded.split_whitespace().collect();
-
-    if parts.is_empty() {
-        return Ok(());
-    }
-
-    match parts[0] {
-        "cd" => {
-            let path = if parts.len() > 1 { parts[1] } else { "" };
-
-            let target_dir = if path.is_empty() {
-                PathBuf::from(env::var("HOME").unwrap_or_else(|_| "/".to_string()))
-            } else {
-                PathBuf::from(path)
-            };
-
-            env::set_current_dir(&target_dir)?;
-        }
-        _ => {
-            Command::new("sh")
-                .arg("-c")
-                .arg(expanded.as_ref())
-                .current_dir(env::current_dir()?)
-                .status()?;
+    // Sync the shell's final cwd back to the parent process.
+    if let Ok(new_cwd) = std::fs::read_to_string(&cwd_file) {
+        let new_cwd = new_cwd.trim();
+        if !new_cwd.is_empty() {
+            let _ = env::set_current_dir(new_cwd);
         }
     }
+    let _ = std::fs::remove_file(&cwd_file);
 
     Ok(())
 }
@@ -211,4 +197,109 @@ pub fn get_home_dir() -> PathBuf {
         .or_else(|| env::var("USERPROFILE").ok())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("~"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    // `set_current_dir` is process-global, so cwd tests must not run in parallel.
+    static CD_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Run a test while preserving the original working directory.
+    fn with_saved_cwd(f: impl FnOnce()) {
+        let _guard = CD_LOCK.lock().unwrap();
+        let original = env::current_dir().unwrap();
+        f();
+        env::set_current_dir(&original).unwrap();
+    }
+
+    #[test]
+    fn empty_command_is_noop() {
+        assert!(execute_shell_command("").is_ok());
+        assert!(execute_shell_command("   ").is_ok());
+    }
+
+    #[test]
+    fn cd_bare_goes_home() {
+        with_saved_cwd(|| {
+            let home = env::var("HOME").unwrap();
+            execute_shell_command("cd").unwrap();
+            assert_eq!(env::current_dir().unwrap(), PathBuf::from(&home));
+        });
+    }
+
+    #[test]
+    fn cd_absolute_path() {
+        with_saved_cwd(|| {
+            execute_shell_command("cd /tmp").unwrap();
+            assert_eq!(env::current_dir().unwrap(), PathBuf::from("/tmp"));
+        });
+    }
+
+    #[test]
+    fn cd_tilde_expands_to_home() {
+        with_saved_cwd(|| {
+            let home = env::var("HOME").unwrap();
+            execute_shell_command("cd ~").unwrap();
+            assert_eq!(env::current_dir().unwrap(), PathBuf::from(&home));
+        });
+    }
+
+    #[test]
+    fn cd_tilde_subdir_expands() {
+        with_saved_cwd(|| {
+            let home = env::var("HOME").unwrap();
+            let subdir = PathBuf::from(&home);
+            // Ensure $HOME exists, then cd ~ should land there.
+            assert!(subdir.is_dir(), "$HOME must exist");
+            execute_shell_command("cd ~").unwrap();
+            assert_eq!(env::current_dir().unwrap(), subdir);
+        });
+    }
+
+    #[test]
+    fn cd_nonexistent_keeps_cwd() {
+        with_saved_cwd(|| {
+            let before = env::current_dir().unwrap();
+            // sh prints an error to stderr; cwd stays unchanged.
+            execute_shell_command("cd /nonexistent_dir_that_should_not_exist").unwrap();
+            assert_eq!(env::current_dir().unwrap(), before);
+        });
+    }
+
+    #[test]
+    fn compound_cd_changes_cwd() {
+        with_saved_cwd(|| {
+            // `cd /tmp && echo ok` should run both parts and sync cwd back.
+            execute_shell_command("cd /tmp && echo ok").unwrap();
+            assert_eq!(env::current_dir().unwrap(), PathBuf::from("/tmp"));
+        });
+    }
+
+    #[test]
+    fn compound_cd_failed_keeps_cwd() {
+        with_saved_cwd(|| {
+            let before = env::current_dir().unwrap();
+            // cd to nonexistent dir fails, `echo ok` never runs, cwd unchanged.
+            execute_shell_command("cd /nonexistent_dir && echo ok").unwrap();
+            assert_eq!(env::current_dir().unwrap(), before);
+        });
+    }
+
+    #[test]
+    fn pipe_command_runs() {
+        assert!(execute_shell_command("echo hello | cat").is_ok());
+    }
+
+    #[test]
+    fn regular_command_runs_via_shell() {
+        assert!(execute_shell_command("echo hello").is_ok());
+    }
+
+    #[test]
+    fn multiline_command_runs_via_shell() {
+        assert!(execute_shell_command("echo line1\necho line2").is_ok());
+    }
 }
