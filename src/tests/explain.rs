@@ -128,7 +128,10 @@ fn single_run_with_mock_executes_command() {
         "stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "from_mock");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "echo from_mock"
+    );
 }
 
 // Interactive mode (piped stdin): mock returns a command → binary executes it,

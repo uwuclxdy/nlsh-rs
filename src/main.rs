@@ -77,7 +77,7 @@ async fn generate_with_cancellation(
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 fn execute_or_print(command: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if std::io::stdout().is_terminal() {
+    if std::io::stdout().is_terminal() || std::env::var("NLSH_FORCE_INTERACTIVE").is_ok() {
         execute_shell_command(command)?;
     } else {
         println!("{}", command);
