@@ -10,6 +10,7 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait AIProvider: Send + Sync {
     async fn generate(&self, prompt: &str) -> Result<String, NlshError>;
+    fn name(&self) -> String;
 }
 
 pub fn create_provider(config: &Config) -> Result<Box<dyn AIProvider>, NlshError> {

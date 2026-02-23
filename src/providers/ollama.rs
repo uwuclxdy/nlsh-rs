@@ -62,4 +62,13 @@ impl AIProvider for OllamaProvider {
 
         Ok(ollama_response.response)
     }
+    fn name(&self) -> String {
+        let url = self
+            .base_url
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .trim_end_matches("/*")
+            .trim_end_matches('/');
+        format!("Ollama ({})", url)
+    }
 }

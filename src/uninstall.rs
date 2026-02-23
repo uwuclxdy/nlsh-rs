@@ -3,7 +3,7 @@ use inquire::Confirm;
 use std::fs;
 use std::process::Command;
 
-use crate::cli::{print_check_with_message, print_warning_with_message};
+use crate::cli::{print_ok, print_warning};
 use crate::common::{clear_line, show_cursor};
 use crate::shell_integration::remove_shell_integration;
 
@@ -25,9 +25,9 @@ pub fn uninstall_nlsh() -> Result<(), Box<dyn std::error::Error>> {
 
 fn handle_shell_integration() {
     match remove_shell_integration() {
-        Ok(true) => print_check_with_message("removed shell integration"),
+        Ok(true) => print_ok("removed shell integration"),
         Ok(false) => eprintln!("{}", "  no shell integration found".dimmed()),
-        Err(e) => print_warning_with_message(&format!("failed to remove shell integration: {}", e)),
+        Err(e) => print_warning(&format!("failed to remove shell integration: {}", e)),
     }
 }
 
@@ -37,14 +37,14 @@ fn uninstall_cargo_crate() -> Result<(), Box<dyn std::error::Error>> {
         .output()?;
 
     if output.status.success() {
-        print_check_with_message("uninstalled cargo crate");
+        print_ok("uninstalled cargo crate");
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("package 'nlsh-rs' is not installed") || stderr.contains("not installed")
         {
             eprintln!("{}", "  cargo crate not installed".dimmed());
         } else {
-            print_warning_with_message(&format!("failed to uninstall: {}", stderr.trim()));
+            print_warning(&format!("failed to uninstall: {}", stderr.trim()));
         }
     }
     Ok(())
@@ -65,7 +65,7 @@ fn remove_config_optional() -> Result<(), Box<dyn std::error::Error>> {
 
         if config_dir.exists() {
             fs::remove_dir_all(&config_dir)?;
-            print_check_with_message("removed configuration");
+            print_ok("removed configuration");
         } else {
             eprintln!("{}", "  no configuration found".dimmed());
         }
@@ -92,7 +92,7 @@ fn remove_repo_optional() -> Result<(), Box<dyn std::error::Error>> {
                 let parent = current_dir.parent().ok_or("cannot remove root directory")?;
                 std::env::set_current_dir(parent)?;
                 fs::remove_dir_all(&current_dir)?;
-                print_check_with_message("removed nlsh-rs repository");
+                print_ok("removed nlsh-rs repository");
             }
         }
     }

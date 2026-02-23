@@ -9,19 +9,19 @@ const SYMBOL_CHECK: &str = "\u{2713}";
 const SYMBOL_ERROR: &str = "error:";
 const SYMBOL_WARNING: &str = "warning:";
 
-pub fn print_check_with_message(message: &str) {
+pub fn print_ok(message: &str) {
     eprintln!("{} {}", SYMBOL_CHECK.green(), message);
 }
 
-pub fn print_check_with_bold_message(message: &str) {
+pub fn print_ok_bold(message: &str) {
     eprintln!("{} {}", SYMBOL_CHECK.green(), message.bold());
 }
 
-pub fn print_error_with_message(message: &str) {
+pub fn print_error(message: &str) {
     eprintln!("{} {}", SYMBOL_ERROR.red().bold(), message);
 }
 
-pub fn print_warning_with_message(message: &str) {
+pub fn print_warning(message: &str) {
     eprintln!("{} {}", SYMBOL_WARNING.yellow(), message);
 }
 

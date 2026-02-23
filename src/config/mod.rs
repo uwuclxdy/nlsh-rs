@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-use crate::cli::{
-    print_check_with_bold_message, prompt_input, prompt_input_with_default, prompt_select,
-};
+use crate::cli::{print_ok_bold, prompt_input, prompt_input_with_default, prompt_select};
 use crate::common::clear_line;
 use crate::error::NlshError;
 mod migration;
@@ -262,7 +260,7 @@ fn display_config_summary(
     config: &Config,
     provider_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    print_check_with_bold_message("Configuration saved!");
+    print_ok_bold("Configuration saved!");
     eprintln!();
     eprintln!("Provider: {}", provider_name);
 

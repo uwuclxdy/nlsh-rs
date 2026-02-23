@@ -96,4 +96,13 @@ impl AIProvider for OpenAIProvider {
 
         Ok(content)
     }
+    fn name(&self) -> String {
+        let url = self
+            .base_url
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .trim_end_matches("/*")
+            .trim_end_matches('/');
+        format!("OpenAI ({})", url)
+    }
 }

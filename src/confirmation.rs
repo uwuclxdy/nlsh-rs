@@ -1,6 +1,6 @@
 use colored::*;
 
-use crate::cli::{is_interactive_terminal, print_error_with_message};
+use crate::cli::is_interactive_terminal;
 use crate::common::{
     ANSI_CLEAR_LINE, EXIT_SIGINT, clear_n_lines, count_visual_lines, exit_with_code, flush_stderr,
     get_terminal_width, show_cursor,
@@ -399,10 +399,6 @@ pub fn edit_command(current: &str) -> Option<String> {
             KeyEvent::ArrowUp | KeyEvent::Other => {}
         }
     }
-}
-
-pub fn display_error(message: &str) {
-    print_error_with_message(message);
 }
 
 #[cfg(test)]

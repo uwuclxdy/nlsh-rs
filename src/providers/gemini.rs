@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub struct GeminiProvider {
     base: BaseProvider,
+    base_url: String,
     api_key: String,
     model: String,
 }
@@ -63,6 +64,7 @@ impl GeminiProvider {
     pub fn new(config: &GeminiConfig) -> Result<Self, NlshError> {
         Ok(Self {
             base: BaseProvider::new()?,
+            base_url: String::from("https://generativelanguage.googleapis.com"),
             api_key: config.api_key.clone(),
             model: config.model.clone(),
         })
@@ -73,8 +75,8 @@ impl GeminiProvider {
 impl AIProvider for GeminiProvider {
     async fn generate(&self, prompt: &str) -> Result<String, NlshError> {
         let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            self.model, self.api_key
+            "{}/v1beta/models/{}:generateContent?key={}",
+            self.base_url, self.model, self.api_key
         );
 
         let request_body = GeminiRequest {
@@ -153,5 +155,14 @@ impl AIProvider for GeminiProvider {
             .ok_or_else(|| NlshError::InvalidResponse("no text in response".to_string()))?;
 
         Ok(text)
+    }
+    fn name(&self) -> String {
+        let url = self
+            .base_url
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .trim_end_matches("/*")
+            .trim_end_matches('/');
+        format!("Gemini ({})", url)
     }
 }
