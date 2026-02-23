@@ -317,7 +317,8 @@ async fn process_command(
         format!("using {}...", model_name).custom_color(DIM_GRAY)
     ));
 
-    let effective_sys = config::load_sys_prompt();
+    let effective_sys =
+        config::load_sys_prompt().filter(|p| validate_sys_prompt(p));
     let prompt = create_system_prompt(user_input, effective_sys.as_deref());
 
     let response = match &mode {
@@ -413,7 +414,8 @@ async fn get_explanation(
     command: &str,
     provider: &dyn providers::AIProvider,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let effective = config::load_explain_prompt();
+    let effective =
+        config::load_explain_prompt().filter(|p| validate_explain_prompt(p));
     let query = create_explain_prompt(command, effective.as_deref());
 
     eprint_flush(&format!("{}", "explaining...".custom_color(DIM_GRAY)));
