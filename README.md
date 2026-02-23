@@ -4,11 +4,54 @@
 
 > Inspired by [nlsh](https://github.com/junaid-mahmood/nlsh)
 
-## Requirements
+## Usage
+
+```bash
+nlsh-rs show disk usage
+$ df -h
+Run this? (Y/e/n)
+[Y/Enter] to execute, [E] to explain, [Arrow Up] to edit, [N] to cancel
+```
+
+Interactive mode:
+```bash
+nlsh-rs
+nlsh-rs> show disk usage
+$ df -h
+Run this? (Y/e/n)
+[Y/Enter] to execute, [E] to explain, [Arrow Up] to edit, [N] to cancel
+```
+
+Explain command:
+```bash
+nlsh-rs explain df -h
+$ df -h
+✅ Displays free disk space of mounted filesystems in a human readable format.
+Run this? (Y/n)
+[Y/Enter] to execute, [Arrow Up] to edit, [N] to cancel
+```
+
+Edit generated commands before running:
+```bash
+$ df -h --total▉
+[Enter] to confirm, [Ctrl+C] to quit
+```
+
+**subcommands:**
+- `--help` - show help
+- `api` - configure API provider
+- `uninstall` - remove nlsh-rs
+- `prompt` - show/edit the prompt templates
+- `explain` - explain a command
+
+
+## Installation
+
+### Requirements
 
 1. [Rust](https://www.rust-lang.org/tools/install)
 
-## Installation
+---
 
 from crates.io **(recommended)**:
 ```bash
@@ -38,41 +81,7 @@ Select provider and enter credentials. Config is stored in `~/.config/nlsh-rs/co
 
 > You can get free OpenAI compatible API access to some models at https://www.askcodi.com/ and https://openrouter.ai/models?q=free
 
-## Usage
 
-```bash
-$ nlsh-rs
-nlsh-rs> show disk usage
-$ df -h
-Run this? (Y/e/n)
-[Y/Enter] to execute, [E] to explain, [Arrow Up] to edit, [N] to cancel
-...
-$ nlsh-rs show disk usage
-$ df -h
-Run this? (Y/e/n)
-[Y/Enter] to execute, [E] to explain, [Arrow Up] to edit, [N] to cancel
-...
-```
-Explain command:
-```bash
-$ df -h
-✅ Displays free disk space of mounted filesystems in a human readable format.
-Run this? (Y/n)
-[Y/Enter] to execute, [Arrow Up] to edit, [N] to cancel
-```
-
-Edit command:
-```bash
-$ df -h --total▉
-[Enter] to confirm, [Ctrl+C] to quit
-```
-
-**subcommands:**
-- `--help` - show help
-- `api` - configure API provider
-- `uninstall` - remove nlsh-rs
-- `prompt` - show/edit the prompt templates
-- `explain` - explain a command
 
 ## How it works
 
