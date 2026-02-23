@@ -79,9 +79,8 @@ pub fn validate_explain_prompt(template: &str) -> bool {
 pub fn clean_response(response: &str) -> String {
     let mut cleaned = response.trim();
 
-    if cleaned.starts_with("```") {
-        cleaned = cleaned.trim_start_matches("```");
-        cleaned = cleaned
+    if let Some(after_fence) = cleaned.strip_prefix("```") {
+        cleaned = after_fence
             .trim_start_matches("shell")
             .trim_start_matches("bash")
             .trim_start_matches("zsh")
@@ -97,8 +96,7 @@ pub fn clean_explanation(response: &str, command: &str) -> String {
     let cmd_trimmed = command.trim();
 
     // Remove leading command if present
-    if trimmed.starts_with(cmd_trimmed) {
-        let after = &trimmed[cmd_trimmed.len()..];
+    if let Some(after) = trimmed.strip_prefix(cmd_trimmed) {
         if after.starts_with('\n') || after.starts_with(' ') || after.is_empty() {
             after.trim_start().to_string()
         } else {
@@ -110,14 +108,14 @@ pub fn clean_explanation(response: &str, command: &str) -> String {
 }
 
 pub fn create_prompts() -> Result<(), std::io::Error> {
-    let path = get_sys_prompt_path();
-    if !path.exists() {
+    let sys_path = get_sys_prompt_path();
+    if !sys_path.exists() {
         save_sys_prompt(DEFAULT_PROMPT_TEMPLATE)
             .map_err(|e| std::io::Error::other(e.to_string()))?;
     }
 
-    let path = get_explain_prompt_path();
-    if !path.exists() {
+    let explain_path = get_explain_prompt_path();
+    if !explain_path.exists() {
         save_explain_prompt(DEFAULT_EXPLAIN_PROMPT)
             .map_err(|e| std::io::Error::other(e.to_string()))?;
     }

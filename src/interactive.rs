@@ -4,7 +4,7 @@ use rustyline::error::ReadlineError;
 use std::io;
 use std::sync::Mutex;
 
-use crate::common::{exit_with_code, get_current_directory, show_cursor, EXIT_SIGINT};
+use crate::common::{EXIT_SIGINT, exit_with_code, get_current_directory, show_cursor};
 
 static EDITOR: Mutex<Option<DefaultEditor>> = Mutex::new(None);
 

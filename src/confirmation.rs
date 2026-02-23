@@ -2,8 +2,8 @@ use colored::*;
 
 use crate::cli::{is_interactive_terminal, print_error_with_message};
 use crate::common::{
-    clear_n_lines, count_visual_lines, exit_with_code, flush_stderr, get_terminal_width,
-    show_cursor, ANSI_CLEAR_LINE, EXIT_SIGINT,
+    ANSI_CLEAR_LINE, EXIT_SIGINT, clear_n_lines, count_visual_lines, exit_with_code, flush_stderr,
+    get_terminal_width, show_cursor,
 };
 
 pub enum ConfirmResult {
@@ -195,7 +195,6 @@ pub fn confirm_with_explain(
                 show_cursor();
                 return Ok(ConfirmResult::No);
             }
-            KeyEvent::Other => {}
             _ => {}
         }
     }
@@ -241,7 +240,6 @@ pub fn confirm_execution(
                 show_cursor();
                 return Ok(ConfirmResult::No);
             }
-            KeyEvent::Other => {}
             _ => {}
         }
     }
@@ -328,7 +326,12 @@ pub fn edit_command(current: &str) -> Option<String> {
     let redraw = |buf: &[char], pos: usize| {
         let s: String = buf.iter().collect();
         // cursor is on the command line; clear it and redraw
-        eprint!("{}{} {}", ANSI_CLEAR_LINE, "$".cyan(), s.bright_white().bold());
+        eprint!(
+            "{}{} {}",
+            ANSI_CLEAR_LINE,
+            "$".cyan(),
+            s.bright_white().bold()
+        );
         eprint!("\x1b[{}G", 3 + pos);
         flush_stderr();
     };

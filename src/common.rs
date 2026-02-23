@@ -99,7 +99,6 @@ pub fn clear_line() {
     flush_stderr();
 }
 
-
 /// clears exactly `n` visual lines from the terminal, starting at the current
 /// cursor line and moving upward. the cursor is assumed to be on the last of
 /// these `n` lines (e.g. after an `eprint!` without newline).
@@ -158,7 +157,7 @@ pub fn count_visual_lines(text: &str, width: usize) -> usize {
                 let visible_line = String::from_utf8_lossy(&stripped);
                 // Calculate visual width accounting for wide characters
                 let visual_width = visible_line.width();
-                (visual_width + width - 1) / width
+                visual_width.div_ceil(width)
             }
         })
         .sum()

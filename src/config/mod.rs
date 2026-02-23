@@ -25,43 +25,31 @@ impl Config {
             "gemini" => Ok(ProviderConfig {
                 provider_type: "gemini".to_string(),
                 config: ProviderSpecificConfig::Gemini {
-                    gemini: self
-                        .providers
-                        .gemini
-                        .clone()
-                        .ok_or_else(|| {
-                            NlshError::ConfigError(
-                                "gemini config not found for active provider".to_string(),
-                            )
-                        })?,
+                    gemini: self.providers.gemini.clone().ok_or_else(|| {
+                        NlshError::ConfigError(
+                            "gemini config not found for active provider".to_string(),
+                        )
+                    })?,
                 },
             }),
             "ollama" => Ok(ProviderConfig {
                 provider_type: "ollama".to_string(),
                 config: ProviderSpecificConfig::Ollama {
-                    ollama: self
-                        .providers
-                        .ollama
-                        .clone()
-                        .ok_or_else(|| {
-                            NlshError::ConfigError(
-                                "ollama config not found for active provider".to_string(),
-                            )
-                        })?,
+                    ollama: self.providers.ollama.clone().ok_or_else(|| {
+                        NlshError::ConfigError(
+                            "ollama config not found for active provider".to_string(),
+                        )
+                    })?,
                 },
             }),
             "openai" => Ok(ProviderConfig {
                 provider_type: "openai".to_string(),
                 config: ProviderSpecificConfig::OpenAI {
-                    openai: self
-                        .providers
-                        .openai
-                        .clone()
-                        .ok_or_else(|| {
-                            NlshError::ConfigError(
-                                "openai config not found for active provider".to_string(),
-                            )
-                        })?,
+                    openai: self.providers.openai.clone().ok_or_else(|| {
+                        NlshError::ConfigError(
+                            "openai config not found for active provider".to_string(),
+                        )
+                    })?,
                 },
             }),
             _ => Err(NlshError::ConfigError(format!(

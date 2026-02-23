@@ -74,7 +74,7 @@ struct ExplainPromptMigrator;
 
 impl Migrator for ExplainPromptMigrator {
     fn can_migrate(&self, content: &str) -> bool {
-        !OLD_EXPLAIN_PROMPT_V1.is_empty() && content == OLD_EXPLAIN_PROMPT_V1
+        content == OLD_EXPLAIN_PROMPT_V1
     }
 
     fn migrate(&self, _content: &str) -> MigrationResult {

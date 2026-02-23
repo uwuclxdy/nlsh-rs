@@ -15,7 +15,7 @@ from crates.io **(recommended)**:
 cargo install nlsh-rs
 ```
 
-latest commit:
+from source, latest commit:
 ```bash
 curl -sSL https://raw.githubusercontent.com/uwuclxdy/nlsh-rs/main/install.sh | sh
 ```

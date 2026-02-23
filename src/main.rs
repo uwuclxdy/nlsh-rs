@@ -92,6 +92,17 @@ async fn generate_with_cancellation(
     result
 }
 
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+fn execute_or_print(command: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if std::io::stdout().is_terminal() {
+        execute_shell_command(command)?;
+    } else {
+        println!("{}", command);
+    }
+    Ok(())
+}
+
 // ── subcommand handlers ─────────────────────────────────────────────────────
 
 fn handle_prompt_subcommand(
@@ -186,23 +197,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // handle subcommands that do not need a provider
     let needs_provider = matches!(cli.subcommand, Some(cli::Subcommands::Explain { .. }));
-    if !needs_provider {
-        if let Some(ref command) = cli.subcommand {
-            match command {
-                cli::Subcommands::Api => {
-                    interactive_setup()?;
-                    return Ok(());
-                }
-                cli::Subcommands::Uninstall => {
-                    uninstall_nlsh()?;
-                    return Ok(());
-                }
-                cli::Subcommands::Prompt { kind, action } => {
-                    handle_prompt_subcommand(kind, action)?;
-                    return Ok(());
-                }
-                cli::Subcommands::Explain { .. } => unreachable!(),
+    if !needs_provider && let Some(ref command) = cli.subcommand {
+        match command {
+            cli::Subcommands::Api => {
+                interactive_setup()?;
+                return Ok(());
             }
+            cli::Subcommands::Uninstall => {
+                uninstall_nlsh()?;
+                return Ok(());
+            }
+            cli::Subcommands::Prompt { kind, action } => {
+                handle_prompt_subcommand(kind, action)?;
+                return Ok(());
+            }
+            cli::Subcommands::Explain { .. } => unreachable!(),
         }
     }
 
@@ -215,15 +224,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = match load_config() {
         Ok(cfg) => cfg,
         Err(e) => {
-            if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-                if io_err.kind() == std::io::ErrorKind::NotFound {
-                    display_error("no API provider configured.");
-                    eprintln!(
-                        "{}",
-                        "run 'nlsh-rs api' to set up your preferred provider.".cyan()
-                    );
-                    exit_with_code(1);
-                }
+            if let Some(io_err) = e.downcast_ref::<std::io::Error>()
+                && io_err.kind() == std::io::ErrorKind::NotFound
+            {
+                display_error("no API provider configured.");
+                eprintln!(
+                    "{}",
+                    "run 'nlsh-rs api' to set up your preferred provider.".cyan()
+                );
+                exit_with_code(1);
             }
             let err = NlshError::ConfigError(e.to_string());
             display_error(&err.to_string());
@@ -339,32 +348,19 @@ async fn process_command(
     let mut command = clean_response(&response);
 
     if command.trim().is_empty() {
-        display_error("failed to generate a valid command.");
-        eprintln!(
-            "{}",
-            "the AI returned an empty response. please try again.".yellow()
-        );
         return Err(Box::new(NlshError::EmptyResponse));
     }
 
-    let mut cancelled = false;
-    'outer: loop {
+    let cancelled = 'outer: loop {
         let cmd_lines = display_command(&command);
         match confirm_with_explain(cmd_lines)? {
             ConfirmResult::Yes => {
-                if std::io::stdout().is_terminal() {
-                    execute_shell_command(&command)?;
-                } else {
-                    println!("{}", command);
-                }
-                break 'outer;
+                execute_or_print(&command)?;
+                break 'outer false;
             }
-            ConfirmResult::No => break 'outer,
+            ConfirmResult::No => break 'outer false,
             ConfirmResult::Cancel => match &mode {
-                CommandMode::Interactive => {
-                    cancelled = true;
-                    break 'outer;
-                }
+                CommandMode::Interactive => break 'outer true,
                 CommandMode::Single => {
                     show_cursor();
                     exit_with_code(EXIT_SIGINT);
@@ -372,26 +368,19 @@ async fn process_command(
             },
             ConfirmResult::Edit => match edit_command(&command) {
                 Some(new_cmd) => command = new_cmd,
-                None => break 'outer,
+                None => break 'outer false,
             },
             ConfirmResult::Explain => {
                 let explanation = get_explanation(&command, provider).await?;
                 let expl_lines = display_explanation(&explanation);
                 match confirm_execution(cmd_lines, expl_lines)? {
                     ConfirmResult::Yes => {
-                        if std::io::stdout().is_terminal() {
-                            execute_shell_command(&command)?;
-                        } else {
-                            println!("{}", command);
-                        }
-                        break 'outer;
+                        execute_or_print(&command)?;
+                        break 'outer false;
                     }
-                    ConfirmResult::No => break 'outer,
+                    ConfirmResult::No => break 'outer false,
                     ConfirmResult::Cancel => match &mode {
-                        CommandMode::Interactive => {
-                            cancelled = true;
-                            break 'outer;
-                        }
+                        CommandMode::Interactive => break 'outer true,
                         CommandMode::Single => {
                             show_cursor();
                             exit_with_code(EXIT_SIGINT);
@@ -399,13 +388,13 @@ async fn process_command(
                     },
                     ConfirmResult::Edit => match edit_command(&command) {
                         Some(new_cmd) => command = new_cmd,
-                        None => break 'outer,
+                        None => break 'outer false,
                     },
-                    ConfirmResult::Explain => break 'outer,
+                    ConfirmResult::Explain => break 'outer false,
                 }
             }
         }
-    }
+    };
 
     if cancelled {
         Ok(Some(user_input.to_string()))
