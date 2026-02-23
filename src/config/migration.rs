@@ -55,7 +55,7 @@ const OLD_EXPLAIN_PROMPT_V1: &str = "You are a concise command-line assistant. Y
 The command to explain is: {command}
 
 Formatting rules:
-- Always start the response with a single safety emoji: ✅ (safe), ⚠️  (risky), or ❌ (dangerous).
+- Always start the response with a single safety emoji: ✅ (safe), ⚠️ (risky), or ❌ (dangerous).
 - No other emojis are allowed.
 - For ✅ commands: Output ONLY the emoji and the explanation.
 - For ⚠️ or ❌ commands: Output the emoji, the explanation, and a short warning about the danger.
