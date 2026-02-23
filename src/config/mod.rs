@@ -157,6 +157,7 @@ pub fn get_explain_prompt_path() -> PathBuf {
 }
 
 pub fn load_explain_prompt() -> Option<String> {
+    let _ = migration::migrate_explain_prompt();
     fs::read_to_string(get_explain_prompt_path()).ok()
 }
 
