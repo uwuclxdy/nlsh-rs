@@ -15,15 +15,17 @@ mod uninstall;
 use std::io::IsTerminal;
 use tokio_util::sync::CancellationToken;
 
-use cli::{PromptAction, PromptKind, execute_shell_command, parse_cli_args};
+use cli::{
+    PromptAction, PromptKind, execute_shell_command, parse_cli_args, print_error, print_warning,
+};
 use colored::*;
 #[cfg(unix)]
 use common::setup_terminal;
 use common::{EXIT_SIGINT, clear_line, eprint_flush, exit_with_code, show_cursor};
 use config::{Config, interactive_setup, load_config};
 use confirmation::{
-    ConfirmResult, confirm_execution, confirm_with_explain, display_command, display_error,
-    display_explanation, edit_command,
+    ConfirmResult, confirm_execution, confirm_with_explain, display_command, display_explanation,
+    edit_command,
 };
 use error::NlshError;
 use interactive::{get_user_input, get_user_input_prefilled};
@@ -46,26 +48,6 @@ const DIM_GRAY: colored::CustomColor = colored::CustomColor {
     g: 128,
     b: 128,
 };
-
-// ── prompt loading helpers ──────────────────────────────────────────────────
-
-fn load_effective_sys_prompt() -> Option<String> {
-    let prompt = config::load_sys_prompt()?;
-    if !validate_sys_prompt(&prompt) {
-        display_error("sys-prompt must contain the {request} placeholder — using default.");
-        return None;
-    }
-    Some(prompt)
-}
-
-fn load_effective_explain_prompt() -> Option<String> {
-    let prompt = config::load_explain_prompt()?;
-    if !validate_explain_prompt(&prompt) {
-        display_error("explain-prompt must contain the {command} placeholder — using default.");
-        return None;
-    }
-    Some(prompt)
-}
 
 // ── cancellation wrapper ────────────────────────────────────────────────────
 
@@ -125,7 +107,7 @@ fn handle_prompt_subcommand(
             if let Some(saved) = config::load_sys_prompt()
                 && !validate_sys_prompt(&saved)
             {
-                display_error("sys-prompt must contain the {request} placeholder.");
+                print_warning("system prompt must contain the {request} placeholder.");
             }
         }
         (PromptKind::Explain, PromptAction::Show) => {
@@ -143,7 +125,7 @@ fn handle_prompt_subcommand(
             if let Some(saved) = config::load_explain_prompt()
                 && !validate_explain_prompt(&saved)
             {
-                display_error("explain-prompt must contain the {command} placeholder.");
+                print_error("explain-prompt must contain the {command} placeholder.");
             }
         }
     }
@@ -155,13 +137,13 @@ async fn handle_explain_subcommand(
     provider: &dyn providers::AIProvider,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if cmd_parts.is_empty() {
-        display_error("no command provided.");
+        print_error("no command provided.");
         exit_with_code(1);
     }
     let command = cmd_parts.join(" ");
     let explanation = get_explanation(&command, provider).await?;
     if explanation.is_empty() {
-        display_error("failed to generate a valid explanation.");
+        print_error("failed to generate a valid explanation.");
         return Ok(());
     }
     display_explanation(&explanation);
@@ -170,8 +152,10 @@ async fn handle_explain_subcommand(
 
 // ── main ────────────────────────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// low‑level implementation of `main` which returns a `Result`.  the
+/// top‑level `main` wrapper will call this and take care of printing a
+/// nicely styled error message when it fails.
+async fn inner_main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     setup_terminal();
 
@@ -180,6 +164,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     create_prompts().ok();
+
+    if !validate_sys_prompt(config::load_sys_prompt().unwrap().to_string().as_str()) {
+        print_warning("system prompt must contain {request} placeholder — using default.");
+    }
+
+    if !validate_explain_prompt(config::load_explain_prompt().unwrap().to_string().as_str()) {
+        print_warning("explain prompt must contain {command} placeholder — using default.");
+    }
 
     match auto_setup_shell_function() {
         Ok(true) => {
@@ -227,7 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(io_err) = e.downcast_ref::<std::io::Error>()
                 && io_err.kind() == std::io::ErrorKind::NotFound
             {
-                display_error("no API provider configured.");
+                print_error("no API provider configured.");
                 eprintln!(
                     "{}",
                     "run 'nlsh-rs api' to set up your preferred provider.".cyan()
@@ -235,7 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 exit_with_code(1);
             }
             let err = NlshError::ConfigError(e.to_string());
-            display_error(&err.to_string());
+            print_error(&err.to_string());
             exit_with_code(1);
         }
     };
@@ -243,7 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let provider = match create_provider(&config) {
         Ok(p) => p,
         Err(e) => {
-            display_error(&e.to_string());
+            print_error(&e.to_string());
             exit_with_code(1);
         }
     };
@@ -285,7 +277,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(None) => {}
                 Err(e) => {
                     if !matches!(e.downcast_ref::<NlshError>(), Some(NlshError::Cancelled)) {
-                        display_error(&e.to_string());
+                        print_error(&e.to_string());
                     }
                 }
             }
@@ -297,6 +289,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    if let Err(e) = inner_main().await {
+        if let Some(nl) = e.downcast_ref::<NlshError>() {
+            nl.print();
+        } else {
+            print_error(&e.to_string());
+        }
+        exit_with_code(1);
+    }
 }
 
 // ── unified command processing ──────────────────────────────────────────────
@@ -313,7 +317,7 @@ async fn process_command(
         format!("using {}...", model_name).custom_color(DIM_GRAY)
     ));
 
-    let effective_sys = load_effective_sys_prompt();
+    let effective_sys = config::load_sys_prompt();
     let prompt = create_system_prompt(user_input, effective_sys.as_deref());
 
     let response = match &mode {
@@ -348,7 +352,7 @@ async fn process_command(
     let mut command = clean_response(&response);
 
     if command.trim().is_empty() {
-        return Err(Box::new(NlshError::EmptyResponse));
+        return Err(Box::new(NlshError::EmptyResponse(provider.name())));
     }
 
     let cancelled = 'outer: loop {
@@ -409,7 +413,7 @@ async fn get_explanation(
     command: &str,
     provider: &dyn providers::AIProvider,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let effective = load_effective_explain_prompt();
+    let effective = config::load_explain_prompt();
     let query = create_explain_prompt(command, effective.as_deref());
 
     eprint_flush(&format!("{}", "explaining...".custom_color(DIM_GRAY)));

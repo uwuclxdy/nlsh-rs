@@ -135,3 +135,19 @@ fn run_with_stdin(
         .wait_with_output()
         .expect("failed to wait for nlsh-rs")
 }
+
+// ── error formatting tests ──────────────────────────────────────────────────
+
+#[test]
+fn connection_failure_prints_pretty_error() {
+    let home = temp_home("conn_fail");
+    // write config pointing at port unlikely to be open
+    write_ollama_config(&home, 1);
+
+    let out = run(&home, &["show disk usage"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    eprintln!("stderr for debug: {:?}", stderr);
+    // should include the styled prefix and the friendly message
+    assert!(stderr.contains("error:") && stderr.contains("failed to connect"));
+}
