@@ -23,7 +23,9 @@ fn run(home: &std::path::Path, args: &[&str]) -> std::process::Output {
 }
 
 fn temp_home(suffix: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("nlsh_test_{suffix}"));
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/tests")
+        .join(format!("nlsh_test_{suffix}"));
     // Pre-create the bash completion marker so auto_setup_shell_function sees it as
     // already installed and returns Ok(false) instead of exiting the process early.
     let completion_dir = dir.join(".local/share/bash-completion/completions");
