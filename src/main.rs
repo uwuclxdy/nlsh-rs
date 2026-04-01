@@ -7,10 +7,26 @@ use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::process::Command;
 
-const CTP_YELLOW: colored::CustomColor = colored::CustomColor { r: 0xf9, g: 0xe2, b: 0xaf };
-const CTP_GREEN: colored::CustomColor = colored::CustomColor { r: 0xa6, g: 0xe3, b: 0xa1 };
-const CTP_BLUE: colored::CustomColor = colored::CustomColor { r: 0x89, g: 0xb4, b: 0xfa };
-const CTP_RED: colored::CustomColor = colored::CustomColor { r: 0xf3, g: 0x8b, b: 0xa8 };
+const CTP_YELLOW: colored::CustomColor = colored::CustomColor {
+    r: 0xf9,
+    g: 0xe2,
+    b: 0xaf,
+};
+const CTP_GREEN: colored::CustomColor = colored::CustomColor {
+    r: 0xa6,
+    g: 0xe3,
+    b: 0xa1,
+};
+const CTP_BLUE: colored::CustomColor = colored::CustomColor {
+    r: 0x89,
+    g: 0xb4,
+    b: 0xfa,
+};
+const CTP_RED: colored::CustomColor = colored::CustomColor {
+    r: 0xf3,
+    g: 0x8b,
+    b: 0xa8,
+};
 
 fn confirm(prompt: &str) -> bool {
     eprint!("{} [Y/n] ", prompt);
@@ -44,11 +60,10 @@ fn migrate_config() -> bool {
 
     let mut copied = false;
     for entry in entries.flatten() {
-        if entry.file_type().is_ok_and(|t| t.is_file()) {
-            if fs::copy(entry.path(), new.join(entry.file_name())).is_ok() {
+        if entry.file_type().is_ok_and(|t| t.is_file())
+            && fs::copy(entry.path(), new.join(entry.file_name())).is_ok() {
                 copied = true;
             }
-        }
     }
     copied
 }
@@ -66,7 +81,12 @@ fn main() {
         colored::control::set_override(true);
     }
 
-    eprintln!("{}", "nlsh-rs has been renamed to larpshell.".custom_color(CTP_YELLOW).bold());
+    eprintln!(
+        "{}",
+        "nlsh-rs has been renamed to larpshell."
+            .custom_color(CTP_YELLOW)
+            .bold()
+    );
     eprintln!();
 
     match remove_shell_integration() {
@@ -93,22 +113,31 @@ fn main() {
 
     if confirm(&format!(
         "{}",
-        "Uninstall nlsh-rs and install larpshell?".custom_color(CTP_YELLOW)
+        "Install larpshell instead?".custom_color(CTP_YELLOW)
     )) {
         eprintln!();
 
         let uninstalled = run_cargo(&["uninstall", "nlsh-rs"]);
         if uninstalled {
-            eprintln!("  {} uninstalled nlsh-rs", "\u{2713}".custom_color(CTP_GREEN));
+            eprintln!(
+                "  {} uninstalled nlsh-rs",
+                "\u{2713}".custom_color(CTP_GREEN)
+            );
         } else {
-            eprintln!("  {} failed to uninstall nlsh-rs", "warning:".custom_color(CTP_YELLOW));
+            eprintln!(
+                "  {} failed to uninstall nlsh-rs",
+                "warning:".custom_color(CTP_YELLOW)
+            );
         }
 
         eprintln!();
 
         let installed = run_cargo(&["install", "larpshell"]);
         if installed {
-            eprintln!("  {} installed larpshell", "\u{2713}".custom_color(CTP_GREEN));
+            eprintln!(
+                "  {} installed larpshell",
+                "\u{2713}".custom_color(CTP_GREEN)
+            );
         } else {
             eprintln!(
                 "  {} cargo install larpshell failed — run it manually",
@@ -118,13 +147,22 @@ fn main() {
 
         eprintln!();
         eprintln!("to keep the 'nlsh-rs' command name, add to your shell config:");
-        eprintln!("  {}", "alias nlsh-rs=larpshell".custom_color(CTP_BLUE).bold());
+        eprintln!(
+            "  {}",
+            "alias nlsh-rs=larpshell".custom_color(CTP_BLUE).bold()
+        );
         eprintln!();
         eprintln!("{}", "restart your shell.".custom_color(CTP_YELLOW));
     } else {
         eprintln!();
         eprintln!("to migrate manually:");
-        eprintln!("  {}", "cargo uninstall nlsh-rs".custom_color(CTP_BLUE).bold());
-        eprintln!("  {}", "cargo install larpshell".custom_color(CTP_BLUE).bold());
+        eprintln!(
+            "  {}",
+            "cargo uninstall nlsh-rs".custom_color(CTP_BLUE).bold()
+        );
+        eprintln!(
+            "  {}",
+            "cargo install larpshell".custom_color(CTP_BLUE).bold()
+        );
     }
 }
