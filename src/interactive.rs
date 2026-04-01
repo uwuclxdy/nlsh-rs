@@ -11,7 +11,10 @@ use rustyline::highlight::{CmdKind, Highlighter};
 use rustyline::hint::Hinter;
 use rustyline::history::DefaultHistory;
 use rustyline::validate::Validator;
-use rustyline::{Editor, Helper};
+use rustyline::{
+    Cmd, ConditionalEventHandler, Editor, Event, EventContext, EventHandler, Helper, KeyCode,
+    KeyEvent, Modifiers, RepeatCount,
+};
 
 use crate::common::{EXIT_SIGINT, exit_with_code, get_current_directory, show_cursor};
 use crate::slash_commands;
@@ -120,6 +123,51 @@ impl Highlighter for NlshHelper {
     }
 }
 
+struct SlashPreviewHandler;
+
+impl ConditionalEventHandler for SlashPreviewHandler {
+    fn handle(
+        &self,
+        evt: &Event,
+        _n: RepeatCount,
+        _positive: bool,
+        ctx: &EventContext<'_>,
+    ) -> Option<Cmd> {
+        let line = ctx.line();
+        let pos = ctx.pos();
+
+        let effective = match evt {
+            Event::KeySeq(keys) => match keys.first() {
+                Some(KeyEvent(KeyCode::Char(c), Modifiers::NONE)) => {
+                    let mut s = line.to_string();
+                    s.insert(pos, *c);
+                    s
+                }
+                Some(KeyEvent(KeyCode::Backspace, _)) if pos > 0 => {
+                    let char_start = line[..pos]
+                        .char_indices()
+                        .next_back()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
+                    let mut s = line.to_string();
+                    s.replace_range(char_start..pos, "");
+                    s
+                }
+                _ => line.to_string(),
+            },
+            _ => line.to_string(),
+        };
+
+        if effective.starts_with('/') {
+            draw_slash_preview(&effective);
+        } else {
+            clear_slash_preview();
+        }
+
+        None
+    }
+}
+
 type NlshEditor = Editor<NlshHelper, DefaultHistory>;
 
 static EDITOR: Mutex<Option<NlshEditor>> = Mutex::new(None);
@@ -132,6 +180,10 @@ where
     let editor = editor_lock.get_or_insert_with(|| {
         let mut ed = Editor::<NlshHelper, DefaultHistory>::new().unwrap();
         ed.set_helper(Some(NlshHelper));
+        ed.bind_sequence(
+            Event::Any,
+            EventHandler::Conditional(Box::new(SlashPreviewHandler)),
+        );
         ed
     });
     let cwd = get_current_directory();
@@ -143,6 +195,7 @@ where
     );
     match readline_fn(editor, &prompt) {
         Ok(line) => {
+            clear_slash_preview();
             let trimmed = line.trim();
             if !trimmed.is_empty() {
                 let _ = editor.add_history_entry(&line);
@@ -152,14 +205,19 @@ where
             }
         }
         Err(ReadlineError::Interrupted) => {
+            clear_slash_preview();
             show_cursor();
             exit_with_code(EXIT_SIGINT);
         }
         Err(ReadlineError::Eof) => {
+            clear_slash_preview();
             show_cursor();
             exit_with_code(0);
         }
-        Err(err) => Err(io::Error::other(err)),
+        Err(err) => {
+            clear_slash_preview();
+            Err(io::Error::other(err))
+        }
     }
 }
 

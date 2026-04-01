@@ -252,6 +252,7 @@ async fn inner_main() -> Result<(), Box<dyn std::error::Error>> {
         // interactive mode: keep running until ctrl+c at prompt
         let mut prefill: Option<String> = None;
         loop {
+            interactive::reserve_preview_space();
             let raw_input = if let Some(initial) = prefill.take() {
                 get_user_input_prefilled(&initial)?
             } else {
