@@ -1,19 +1,59 @@
-use colored::*;
-use rustyline::DefaultEditor;
-use rustyline::error::ReadlineError;
+use std::borrow::Cow;
 use std::io;
 use std::sync::Mutex;
 
+use colored::*;
+use rustyline::completion::Completer;
+use rustyline::error::ReadlineError;
+use rustyline::highlight::{CmdKind, Highlighter};
+use rustyline::hint::Hinter;
+use rustyline::history::DefaultHistory;
+use rustyline::validate::Validator;
+use rustyline::{Editor, Helper};
+
 use crate::common::{EXIT_SIGINT, exit_with_code, get_current_directory, show_cursor};
 
-static EDITOR: Mutex<Option<DefaultEditor>> = Mutex::new(None);
+pub struct NlshHelper;
+
+impl Helper for NlshHelper {}
+
+impl Completer for NlshHelper {
+    type Candidate = String;
+}
+
+impl Hinter for NlshHelper {
+    type Hint = String;
+}
+
+impl Validator for NlshHelper {}
+
+impl Highlighter for NlshHelper {
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
+        if !line.starts_with('/') {
+            return Cow::Borrowed(line);
+        }
+        Cow::Owned(line.cyan().bold().to_string())
+    }
+
+    fn highlight_char(&self, line: &str, _pos: usize, _kind: CmdKind) -> bool {
+        line.starts_with('/')
+    }
+}
+
+type NlshEditor = Editor<NlshHelper, DefaultHistory>;
+
+static EDITOR: Mutex<Option<NlshEditor>> = Mutex::new(None);
 
 fn with_editor<F>(readline_fn: F) -> Result<Option<String>, io::Error>
 where
-    F: FnOnce(&mut DefaultEditor, &str) -> rustyline::Result<String>,
+    F: FnOnce(&mut NlshEditor, &str) -> rustyline::Result<String>,
 {
     let mut editor_lock = EDITOR.lock().unwrap();
-    let editor = editor_lock.get_or_insert_with(|| DefaultEditor::new().unwrap());
+    let editor = editor_lock.get_or_insert_with(|| {
+        let mut ed = Editor::<NlshHelper, DefaultHistory>::new().unwrap();
+        ed.set_helper(Some(NlshHelper));
+        ed
+    });
     let cwd = get_current_directory();
     let prompt = format!(
         "{}:{}{} ",
@@ -49,4 +89,38 @@ pub fn get_user_input_prefilled(initial: &str) -> Result<Option<String>, io::Err
 
 pub fn get_user_input() -> Result<Option<String>, io::Error> {
     with_editor(|editor, prompt| editor.readline(prompt))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustyline::highlight::{CmdKind, Highlighter};
+
+    #[test]
+    fn highlight_slash_prefix_colors_typed_part() {
+        colored::control::set_override(true);
+        let helper = NlshHelper;
+        let result = helper.highlight("/pr", 3);
+        assert!(result.contains("\x1b["), "expected ANSI codes in: {result}");
+        assert!(result.contains("/pr"), "typed part must appear in output");
+    }
+
+    #[test]
+    fn highlight_non_slash_line_is_unchanged() {
+        let helper = NlshHelper;
+        let result = helper.highlight("list files", 10);
+        assert_eq!(result.as_ref(), "list files");
+    }
+
+    #[test]
+    fn highlight_char_true_for_slash_line() {
+        let helper = NlshHelper;
+        assert!(helper.highlight_char("/api", 4, CmdKind::Other));
+    }
+
+    #[test]
+    fn highlight_char_false_for_normal_line() {
+        let helper = NlshHelper;
+        assert!(!helper.highlight_char("list files", 10, CmdKind::Other));
+    }
 }
