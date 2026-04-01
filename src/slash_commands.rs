@@ -2,15 +2,31 @@ use crate::cli::{PromptAction, PromptKind};
 
 pub struct SlashCommand {
     pub name: &'static str,
+    #[allow(dead_code)] // used in Task 4: preview drawing
     pub description: &'static str,
 }
 
 pub const COMMANDS: &[SlashCommand] = &[
-    SlashCommand { name: "api",       description: "configure API provider" },
-    SlashCommand { name: "explain",   description: "explain a shell command" },
-    SlashCommand { name: "prompt",    description: "manage system or explain prompts" },
-    SlashCommand { name: "quit",      description: "exit interactive mode" },
-    SlashCommand { name: "uninstall", description: "uninstall nlsh-rs" },
+    SlashCommand {
+        name: "api",
+        description: "configure API provider",
+    },
+    SlashCommand {
+        name: "explain",
+        description: "explain a shell command",
+    },
+    SlashCommand {
+        name: "prompt",
+        description: "manage system or explain prompts",
+    },
+    SlashCommand {
+        name: "quit",
+        description: "exit interactive mode",
+    },
+    SlashCommand {
+        name: "uninstall",
+        description: "uninstall nlsh-rs",
+    },
 ];
 
 /// Returns commands whose `/name` is a prefix of `typed`, or `typed` is a prefix of `/name`.
@@ -19,41 +35,46 @@ pub fn filter(typed: &str) -> Vec<&'static SlashCommand> {
     if !typed.starts_with('/') {
         return vec![];
     }
+    // Extract just the command part (first word, strip leading '/')
+    let typed_cmd = typed[1..].split_whitespace().next().unwrap_or("");
     COMMANDS
         .iter()
-        .filter(|cmd| {
-            let full = format!("/{}", cmd.name);
-            full.starts_with(typed) || typed.starts_with(&full)
-        })
+        .filter(|cmd| cmd.name.starts_with(typed_cmd) || typed_cmd.starts_with(cmd.name))
         .collect()
 }
 
+#[derive(Debug)]
 pub enum SlashCmd {
     Api,
     Uninstall,
-    Prompt { kind: PromptKind, action: PromptAction },
-    Explain { cmd: Vec<String> },
+    Prompt {
+        kind: PromptKind,
+        action: PromptAction,
+    },
+    Explain {
+        args: Vec<String>,
+    },
     Quit,
     Unknown(String),
 }
 
 pub fn parse(input: &str) -> SlashCmd {
-    let parts: Vec<&str> = input.split_whitespace().collect();
-    match parts.first().copied() {
-        Some("/api")       => SlashCmd::Api,
+    let mut parts = input.split_whitespace();
+    match parts.next() {
+        Some("/api") => SlashCmd::Api,
         Some("/uninstall") => SlashCmd::Uninstall,
-        Some("/quit")      => SlashCmd::Quit,
-        Some("/explain")   => SlashCmd::Explain {
-            cmd: parts[1..].iter().map(|s| s.to_string()).collect(),
+        Some("/quit") => SlashCmd::Quit,
+        Some("/explain") => SlashCmd::Explain {
+            args: parts.map(|s| s.to_string()).collect(),
         },
         Some("/prompt") => {
-            let kind = match parts.get(1).copied() {
+            let kind = match parts.next() {
                 Some("explain") => PromptKind::Explain,
-                _               => PromptKind::System,
+                _ => PromptKind::System,
             };
-            let action = match parts.get(2).copied() {
+            let action = match parts.next() {
                 Some("edit") => PromptAction::Edit,
-                _            => PromptAction::Show,
+                _ => PromptAction::Show,
             };
             SlashCmd::Prompt { kind, action }
         }
@@ -120,7 +141,7 @@ mod tests {
     fn parse_explain_with_args() {
         let cmd = parse("/explain ls -la");
         match cmd {
-            SlashCmd::Explain { cmd } => assert_eq!(cmd, vec!["ls", "-la"]),
+            SlashCmd::Explain { args } => assert_eq!(args, vec!["ls", "-la"]),
             _ => panic!("expected Explain"),
         }
     }
