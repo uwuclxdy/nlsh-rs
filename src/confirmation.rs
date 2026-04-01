@@ -2,8 +2,8 @@ use colored::*;
 
 use crate::cli::is_interactive_terminal;
 use crate::common::{
-    ANSI_CLEAR_LINE, EXIT_SIGINT, clear_n_lines, count_visual_lines, exit_with_code, flush_stderr,
-    get_terminal_width, show_cursor,
+    ANSI_CLEAR_LINE, CTP_BLUE, CTP_OVERLAY0, CTP_TEXT, CTP_YELLOW, EXIT_SIGINT, clear_n_lines,
+    count_visual_lines, exit_with_code, flush_stderr, get_terminal_width, show_cursor,
 };
 
 pub enum ConfirmResult {
@@ -108,18 +108,18 @@ pub fn display_command(command: &str) -> usize {
     let lines: Vec<&str> = command.lines().collect();
     if lines.len() == 1 {
         let visual = count_visual_lines(&format!("$ {}", command), width);
-        eprintln!("{} {}", "$".cyan(), command.bright_white().bold());
+        eprintln!("{} {}", "$".custom_color(CTP_BLUE), command.custom_color(CTP_TEXT).bold());
         visual
     } else {
         let mut visual = count_visual_lines("> multiline command:", width);
         eprintln!(
             "{} {}",
-            ">".cyan(),
-            "multiline command:".bright_white().bold()
+            ">".custom_color(CTP_BLUE),
+            "multiline command:".custom_color(CTP_TEXT).bold()
         );
         for line in lines.iter() {
             visual += count_visual_lines(&format!("$ {}", line), width);
-            eprintln!("{} {}", "$".cyan(), line.bright_white());
+            eprintln!("{} {}", "$".custom_color(CTP_BLUE), line.custom_color(CTP_TEXT));
         }
         visual
     }
@@ -131,7 +131,7 @@ pub fn display_explanation(explanation: &str) -> usize {
     let visual = count_visual_lines(&styled, width);
     let lines: Vec<&str> = styled.lines().collect();
     for line in &lines {
-        eprintln!("{}", line.bright_white());
+        eprintln!("{}", line.custom_color(CTP_TEXT));
     }
     visual
 }
@@ -251,8 +251,8 @@ fn confirmation_prompt(with_explain: bool) -> usize {
     if with_explain {
         let line1 = format!(
             "{} {}",
-            "Run this?".yellow(),
-            "(Y/e/n)".truecolor(128, 128, 128)
+            "Run this?".custom_color(CTP_YELLOW),
+            "(Y/e/n)".custom_color(CTP_OVERLAY0)
         );
         visual += count_visual_lines(&line1, width);
         eprintln!("{}", line1);
@@ -264,12 +264,12 @@ fn confirmation_prompt(with_explain: bool) -> usize {
             "N".bold()
         );
         visual += count_visual_lines(&line2, width);
-        eprint!("{}", line2.cyan());
+        eprint!("{}", line2.custom_color(CTP_BLUE));
     } else {
         let line1 = format!(
             "{} {}",
-            "Run this?".yellow(),
-            "(Y/n)".truecolor(128, 128, 128)
+            "Run this?".custom_color(CTP_YELLOW),
+            "(Y/n)".custom_color(CTP_OVERLAY0)
         );
         visual += count_visual_lines(&line1, width);
         eprintln!("{}", line1);
@@ -280,7 +280,7 @@ fn confirmation_prompt(with_explain: bool) -> usize {
             "N".bold()
         );
         visual += count_visual_lines(&line2, width);
-        eprint!("{}", line2.cyan());
+        eprint!("{}", line2.custom_color(CTP_BLUE));
     }
     visual
 }
@@ -303,9 +303,9 @@ pub fn edit_command(current: &str) -> Option<String> {
     // Draw: command on current line (no newline), hint on the line below.
     // Then move cursor back up to the command line.
     let init: String = buf.iter().collect();
-    eprint!("{} {}", "$".cyan(), init.bright_white().bold());
+    eprint!("{} {}", "$".custom_color(CTP_BLUE), init.custom_color(CTP_TEXT).bold());
     eprintln!(); // move to hint line
-    eprint!("{}", hint_text.cyan());
+    eprint!("{}", hint_text.custom_color(CTP_BLUE));
     // cursor up 1 line, then set absolute column: "$ " = 2 visible chars, 1-indexed
     eprint!("\x1b[1A\x1b[{}G", 3 + pos);
     flush_stderr();
@@ -329,8 +329,8 @@ pub fn edit_command(current: &str) -> Option<String> {
         eprint!(
             "{}{} {}",
             ANSI_CLEAR_LINE,
-            "$".cyan(),
-            s.bright_white().bold()
+            "$".custom_color(CTP_BLUE),
+            s.custom_color(CTP_TEXT).bold()
         );
         eprint!("\x1b[{}G", 3 + pos);
         flush_stderr();

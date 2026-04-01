@@ -16,7 +16,7 @@ use rustyline::{
     EventHandler, Helper, KeyCode, KeyEvent, Modifiers, RepeatCount,
 };
 
-use crate::common::{EXIT_SIGINT, exit_with_code, get_current_directory, show_cursor};
+use crate::common::{CTP_BLUE, CTP_OVERLAY0, EXIT_SIGINT, exit_with_code, get_current_directory, show_cursor};
 use crate::slash_commands;
 
 // Number of preview lines currently drawn below the prompt.
@@ -36,10 +36,10 @@ fn format_preview_row(cmd_name: &str, typed_len: usize, description: &str) -> St
     let pad = PREVIEW_DESC_COL.saturating_sub(name_display_len + 2);
     format!(
         "  {}{}{}{}",
-        typed.cyan().bold(),
-        untyped.truecolor(128, 128, 128),
+        typed.custom_color(CTP_BLUE).bold(),
+        untyped.custom_color(CTP_OVERLAY0),
         " ".repeat(pad + 4),
-        description.truecolor(128, 128, 128),
+        description.custom_color(CTP_OVERLAY0),
     )
 }
 
@@ -153,7 +153,7 @@ impl Highlighter for NlshHelper {
         }
         // Draw preview after rustyline redraws the prompt line.
         draw_slash_preview(line);
-        Cow::Owned(line.cyan().bold().to_string())
+        Cow::Owned(line.custom_color(CTP_BLUE).bold().to_string())
     }
 
     fn highlight_char(&self, line: &str, _pos: usize, _kind: CmdKind) -> bool {
@@ -232,8 +232,8 @@ where
     let cwd = get_current_directory();
     let prompt = format!(
         "{}:{}{} ",
-        "nlsh-rs".cyan().bold(),
-        cwd.custom_color((164, 164, 164)).bold(),
+        "nlsh-rs".custom_color(CTP_BLUE).bold(),
+        cwd.custom_color(CTP_OVERLAY0).bold(),
         ">".bold()
     );
     match readline_fn(editor, &prompt) {

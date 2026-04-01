@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::cli::{print_ok_bold, prompt_input, prompt_input_with_default, prompt_select};
-use crate::common::clear_line;
+use crate::common::{CTP_GREEN, CTP_RED, clear_line};
 use crate::error::NlshError;
 mod migration;
 
@@ -189,7 +189,7 @@ pub fn interactive_setup() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .map(|(name, key)| {
             if Some(*key) == current_provider {
-                format!("{}", name.green())
+                format!("{}", name.custom_color(CTP_GREEN))
             } else {
                 name.to_string()
             }
@@ -361,7 +361,7 @@ fn prompt_model_name(default: Option<&str>) -> Result<String, Box<dyn std::error
     };
 
     if model.trim().is_empty() {
-        eprintln!("{}", "Model name cannot be empty".red());
+        eprintln!("{}", "Model name cannot be empty".custom_color(CTP_RED));
         return prompt_model_name(default);
     }
 

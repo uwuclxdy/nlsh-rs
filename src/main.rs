@@ -22,7 +22,10 @@ use cli::{
 use colored::*;
 #[cfg(unix)]
 use common::setup_terminal;
-use common::{EXIT_SIGINT, clear_line, eprint_flush, exit_with_code, show_cursor};
+use common::{
+    CTP_BLUE, CTP_OVERLAY0, CTP_YELLOW, EXIT_SIGINT, clear_line, eprint_flush, exit_with_code,
+    show_cursor,
+};
 use config::{Config, interactive_setup, load_config};
 use confirmation::{
     ConfirmResult, confirm_execution, confirm_with_explain, display_command, display_explanation,
@@ -43,12 +46,6 @@ enum CommandMode {
     Interactive,
     Single,
 }
-
-const DIM_GRAY: colored::CustomColor = colored::CustomColor {
-    r: 128,
-    g: 128,
-    b: 128,
-};
 
 // ── cancellation wrapper ────────────────────────────────────────────────────
 
@@ -178,7 +175,7 @@ async fn inner_main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(true) => {
             eprintln!(
                 "{}",
-                "restart shell or run 'source ~/.bashrc' ('source ~/.config/fish/config.fish' for fish).".yellow()
+                "restart shell or run 'source ~/.bashrc' ('source ~/.config/fish/config.fish' for fish).".custom_color(CTP_YELLOW)
             );
             exit_with_code(0);
         }
@@ -223,7 +220,7 @@ async fn inner_main() -> Result<(), Box<dyn std::error::Error>> {
                 print_error("no API provider configured.");
                 eprintln!(
                     "{}",
-                    "run 'nlsh-rs api' to set up your preferred provider.".cyan()
+                    "run 'nlsh-rs api' to set up your preferred provider.".custom_color(CTP_BLUE)
                 );
                 exit_with_code(1);
             }
@@ -351,7 +348,7 @@ async fn process_command(
     let model_name = config.get_provider_config()?.config.model().to_string();
     eprint_flush(&format!(
         "{}",
-        format!("using {}...", model_name).custom_color(DIM_GRAY)
+        format!("using {}...", model_name).custom_color(CTP_OVERLAY0)
     ));
 
     let effective_sys = config::load_sys_prompt().filter(|p| validate_sys_prompt(p));
@@ -453,7 +450,7 @@ async fn get_explanation(
     let effective = config::load_explain_prompt().filter(|p| validate_explain_prompt(p));
     let query = create_explain_prompt(command, effective.as_deref());
 
-    eprint_flush(&format!("{}", "explaining...".custom_color(DIM_GRAY)));
+    eprint_flush(&format!("{}", "explaining...".custom_color(CTP_OVERLAY0)));
 
     let result = generate_with_cancellation(provider, &query).await?;
     let cleaned = prompt::clean_explanation(&result, command);

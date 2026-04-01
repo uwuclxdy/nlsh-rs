@@ -4,11 +4,11 @@ use std::fs;
 use std::process::Command;
 
 use crate::cli::{print_ok, print_warning};
-use crate::common::{clear_line, show_cursor};
+use crate::common::{CTP_GREEN, CTP_YELLOW, clear_line, show_cursor};
 use crate::shell_integration::remove_shell_integration;
 
 pub fn uninstall_nlsh() -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("{}", "uninstalling nlsh-rs...".yellow().bold());
+    eprintln!("{}", "uninstalling nlsh-rs...".custom_color(CTP_YELLOW).bold());
     eprintln!();
 
     handle_shell_integration();
@@ -17,8 +17,8 @@ pub fn uninstall_nlsh() -> Result<(), Box<dyn std::error::Error>> {
     remove_repo_optional()?;
 
     eprintln!();
-    eprintln!("{}", "nlsh-rs successfully uninstalled.".green().bold());
-    eprintln!("{}", "please restart your shell or run 'source ~/.bashrc' (or 'source ~/.config/fish/config.fish' for fish).".yellow());
+    eprintln!("{}", "nlsh-rs successfully uninstalled.".custom_color(CTP_GREEN).bold());
+    eprintln!("{}", "please restart your shell or run 'source ~/.bashrc' (or 'source ~/.config/fish/config.fish' for fish).".custom_color(CTP_YELLOW));
 
     Ok(())
 }

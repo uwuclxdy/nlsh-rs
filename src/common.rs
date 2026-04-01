@@ -9,6 +9,14 @@ use unicode_width::UnicodeWidthStr;
 
 pub const EXIT_SIGINT: i32 = 130;
 
+// Catppuccin Mocha palette — terminal truecolor tokens
+pub const CTP_BLUE: colored::CustomColor = colored::CustomColor { r: 0x89, g: 0xb4, b: 0xfa };
+pub const CTP_GREEN: colored::CustomColor = colored::CustomColor { r: 0xa6, g: 0xe3, b: 0xa1 };
+pub const CTP_RED: colored::CustomColor = colored::CustomColor { r: 0xf3, g: 0x8b, b: 0xa8 };
+pub const CTP_YELLOW: colored::CustomColor = colored::CustomColor { r: 0xf9, g: 0xe2, b: 0xaf };
+pub const CTP_TEXT: colored::CustomColor = colored::CustomColor { r: 0xcd, g: 0xd6, b: 0xf4 };
+pub const CTP_OVERLAY0: colored::CustomColor = colored::CustomColor { r: 0x6c, g: 0x70, b: 0x86 };
+
 pub const ANSI_SHOW_CURSOR: &str = "\x1b[?25h";
 pub const ANSI_CLEAR_LINE: &str = "\r\x1b[K";
 pub const ANSI_CURSOR_UP_CLEAR: &str = "\x1b[1A\x1b[K";

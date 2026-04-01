@@ -5,24 +5,26 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::common::{CTP_GREEN, CTP_RED, CTP_YELLOW};
+
 const SYMBOL_CHECK: &str = "\u{2713}";
 const SYMBOL_ERROR: &str = "error:";
 const SYMBOL_WARNING: &str = "warning:";
 
 pub fn print_ok(message: &str) {
-    eprintln!("{} {}", SYMBOL_CHECK.green(), message);
+    eprintln!("{} {}", SYMBOL_CHECK.custom_color(CTP_GREEN), message);
 }
 
 pub fn print_ok_bold(message: &str) {
-    eprintln!("{} {}", SYMBOL_CHECK.green(), message.bold());
+    eprintln!("{} {}", SYMBOL_CHECK.custom_color(CTP_GREEN), message.bold());
 }
 
 pub fn print_error(message: &str) {
-    eprintln!("{} {}", SYMBOL_ERROR.red().bold(), message);
+    eprintln!("{} {}", SYMBOL_ERROR.custom_color(CTP_RED).bold(), message);
 }
 
 pub fn print_warning(message: &str) {
-    eprintln!("{} {}", SYMBOL_WARNING.yellow(), message);
+    eprintln!("{} {}", SYMBOL_WARNING.custom_color(CTP_YELLOW), message);
 }
 
 #[derive(Debug)]
