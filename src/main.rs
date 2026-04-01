@@ -262,6 +262,41 @@ async fn inner_main() -> Result<(), Box<dyn std::error::Error>> {
                 None => continue,
             };
 
+            if user_input.starts_with('/') {
+                match slash_commands::parse(&user_input) {
+                    slash_commands::SlashCmd::Quit => {
+                        show_cursor();
+                        exit_with_code(0);
+                    }
+                    slash_commands::SlashCmd::Api => {
+                        if let Err(e) = interactive_setup() {
+                            print_error(&e.to_string());
+                        }
+                    }
+                    slash_commands::SlashCmd::Uninstall => {
+                        if let Err(e) = uninstall_nlsh() {
+                            print_error(&e.to_string());
+                        }
+                    }
+                    slash_commands::SlashCmd::Prompt { kind, action } => {
+                        if let Err(e) = handle_prompt_subcommand(&kind, &action) {
+                            print_error(&e.to_string());
+                        }
+                    }
+                    slash_commands::SlashCmd::Explain { args } => {
+                        if let Err(e) = handle_explain_subcommand(args, provider.as_ref()).await {
+                            if !matches!(e.downcast_ref::<NlshError>(), Some(NlshError::Cancelled)) {
+                                print_error(&e.to_string());
+                            }
+                        }
+                    }
+                    slash_commands::SlashCmd::Unknown(s) => {
+                        print_error(&format!("unknown command '{s}'"));
+                    }
+                }
+                continue;
+            }
+
             match process_command(
                 &user_input,
                 provider.as_ref(),
@@ -318,8 +353,7 @@ async fn process_command(
         format!("using {}...", model_name).custom_color(DIM_GRAY)
     ));
 
-    let effective_sys =
-        config::load_sys_prompt().filter(|p| validate_sys_prompt(p));
+    let effective_sys = config::load_sys_prompt().filter(|p| validate_sys_prompt(p));
     let prompt = create_system_prompt(user_input, effective_sys.as_deref());
 
     let response = match &mode {
@@ -415,8 +449,7 @@ async fn get_explanation(
     command: &str,
     provider: &dyn providers::AIProvider,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let effective =
-        config::load_explain_prompt().filter(|p| validate_explain_prompt(p));
+    let effective = config::load_explain_prompt().filter(|p| validate_explain_prompt(p));
     let query = create_explain_prompt(command, effective.as_deref());
 
     eprint_flush(&format!("{}", "explaining...".custom_color(DIM_GRAY)));

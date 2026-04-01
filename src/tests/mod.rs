@@ -6,6 +6,7 @@ use std::process::{Command, Stdio};
 
 mod edit;
 mod explain;
+mod slash;
 
 fn binary() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/debug/nlsh-rs")
