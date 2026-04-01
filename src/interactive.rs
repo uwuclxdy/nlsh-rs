@@ -176,7 +176,7 @@ fn with_editor<F>(readline_fn: F) -> Result<Option<String>, io::Error>
 where
     F: FnOnce(&mut NlshEditor, &str) -> rustyline::Result<String>,
 {
-    let mut editor_lock = EDITOR.lock().unwrap();
+    let mut editor_lock = EDITOR.lock().unwrap_or_else(|e| e.into_inner());
     let editor = editor_lock.get_or_insert_with(|| {
         let mut ed = Editor::<NlshHelper, DefaultHistory>::new().unwrap();
         ed.set_helper(Some(NlshHelper));
