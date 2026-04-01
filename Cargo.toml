@@ -1,33 +1,14 @@
 [package]
 name = "nlsh-rs"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
-description = "Translate words to commands using AI within your terminal."
-homepage = "https://github.com/uwuclxdy/nlsh-rs"
-repository = "https://github.com/uwuclxdy/nlsh-rs"
+description = "Deprecated: nlsh-rs has been renamed to larpshell. Run this once to migrate your shell integration."
+homepage = "https://github.com/uwuclxdy/larpshell"
+repository = "https://github.com/uwuclxdy/larpshell"
 readme = "README.md"
-keywords = ["cli", "ai", "shell", "terminal", "nlsh"]
+keywords = ["cli", "ai", "shell", "terminal", "larpshell"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-clap = { version = "4.5.60", features = ["derive"] }
-tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros", "signal", "sync"] }
-tokio-util = "0.7.18"
-reqwest = { version = "0.13.2", features = ["json", "rustls"] }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
-toml = "0.9.8"
-dirs = "6.0.0"
 colored = "3.1.1"
-thiserror = "2.0.18"
-anyhow = "1.0.102"
-async-trait = "0.1.89"
-inquire = "0.9.3"
-rustyline = "17.0.2"
-log = "0.4.29"
-unicode-width = "0.2.2"
-strip-ansi-escapes = "0.2.1"
-
-[target.'cfg(unix)'.dependencies]
-nix = { version = "0.31.1", features = ["term"] }

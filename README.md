@@ -1,100 +1,20 @@
-# nlsh-rs - Natural Language Shell
+# nlsh-rs → larpshell
 
-[![asciicast](https://asciinema.org/a/772400.svg)](https://asciinema.org/a/772400)
+**This package has been renamed to [larpshell](https://github.com/uwuclxdy/larpshell).**
 
-> Inspired by [nlsh](https://github.com/junaid-mahmood/nlsh)
+Installing `nlsh-rs` v0.3.0 will automatically remove your old shell integration
+and print migration instructions.
 
-## Usage
-
-```bash
-nlsh-rs show disk usage
-$ df -h
-Run this? (Y/e/n)
-[Y/Enter] to execute, [E] to explain, [Arrow Up] to edit, [N] to cancel
-```
-
-Interactive mode:
-```bash
-nlsh-rs
-nlsh-rs> show disk usage
-$ df -h
-Run this? (Y/e/n)
-[Y/Enter] to execute, [E] to explain, [Arrow Up] to edit, [N] to cancel
-```
-
-Explain command:
-```bash
-nlsh-rs explain df -h
-$ df -h
-✅ Displays free disk space of mounted filesystems in a human readable format.
-Run this? (Y/n)
-[Y/Enter] to execute, [Arrow Up] to edit, [N] to cancel
-```
-
-Edit generated commands before running:
-```bash
-$ df -h --total▉
-[Enter] to confirm, [Ctrl+C] to quit
-```
-
-**subcommands:**
-- `--help` - show help
-- `api` - configure API provider
-- `uninstall` - remove nlsh-rs
-- `prompt` - show/edit the prompt templates
-- `explain` - explain a command
-
-
-## Installation
-
-### Requirements
-
-1. [Rust](https://www.rust-lang.org/tools/install)
-
----
-
-from crates.io **(recommended)**:
-```bash
-cargo install nlsh-rs
-```
-
-from source, latest commit:
-```bash
-curl -sSL https://raw.githubusercontent.com/uwuclxdy/nlsh-rs/main/install.sh | sh
-```
-
-## Setup
-
-### Configure AI provider
+## Migrate
 
 ```bash
-nlsh-rs api
+cargo install larpshell
 ```
 
-Select provider and enter credentials. Config is stored in `~/.config/nlsh-rs/config.toml`.
+To keep the `nlsh-rs` command name:
 
-## Supported Providers
+```bash
+alias nlsh-rs=larpshell
+```
 
-- **Gemini** - free tier available at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-- **Ollama** - local models
-- **OpenAI-Compatible APIs** - chatgpt or compatible APIs (LMStudio, Groq, etc.)
-
-> You can get free OpenAI compatible API access to some models at https://www.askcodi.com/ and https://openrouter.ai/models?q=free
-
-
-
-## How it works
-
-1. translates natural language to shell commands using AI
-2. asks for confirmation
-3. command runs in parent shell and appears in history
-
-## TODO
-
-- [ ] support for rotation of multiple API keys in case of rate limits
-- [ ] give more context to the model about the machine
-- [ ] access to nlsh-rs's commands inside interactive mode with `/`.
-
-## Credits
-
-for inspiration and prompt: https://github.com/junaid-mahmood/nlsh
+Add the alias to your `~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`.
