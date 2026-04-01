@@ -3,11 +3,30 @@ mod shell_integration;
 
 use colored::*;
 use shell_integration::remove_shell_integration;
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal, Write};
+use std::process::Command;
 
 const CTP_YELLOW: colored::CustomColor = colored::CustomColor { r: 0xf9, g: 0xe2, b: 0xaf };
 const CTP_GREEN: colored::CustomColor = colored::CustomColor { r: 0xa6, g: 0xe3, b: 0xa1 };
 const CTP_BLUE: colored::CustomColor = colored::CustomColor { r: 0x89, g: 0xb4, b: 0xfa };
+const CTP_RED: colored::CustomColor = colored::CustomColor { r: 0xf3, g: 0x8b, b: 0xa8 };
+
+fn confirm(prompt: &str) -> bool {
+    eprint!("{} [Y/n] ", prompt);
+    io::stderr().flush().ok();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).ok();
+    let s = input.trim().to_lowercase();
+    s.is_empty() || s == "y" || s == "yes"
+}
+
+fn run_cargo(args: &[&str]) -> bool {
+    Command::new("cargo")
+        .args(args)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
 
 fn main() {
     if std::io::stderr().is_terminal() {
@@ -31,14 +50,41 @@ fn main() {
     }
 
     eprintln!();
-    eprintln!("install the new package:");
-    eprintln!("  {}", "cargo install larpshell".custom_color(CTP_BLUE).bold());
-    eprintln!();
-    eprintln!("to keep the 'nlsh-rs' command name, add to your shell config:");
-    eprintln!("  {}", "alias nlsh-rs=larpshell".custom_color(CTP_BLUE).bold());
-    eprintln!();
-    eprintln!(
+
+    if confirm(&format!(
         "{}",
-        "restart your shell after installing larpshell.".custom_color(CTP_YELLOW)
-    );
+        "Uninstall nlsh-rs and install larpshell?".custom_color(CTP_YELLOW)
+    )) {
+        eprintln!();
+
+        let uninstalled = run_cargo(&["uninstall", "nlsh-rs"]);
+        if uninstalled {
+            eprintln!("  {} uninstalled nlsh-rs", "\u{2713}".custom_color(CTP_GREEN));
+        } else {
+            eprintln!("  {} failed to uninstall nlsh-rs", "warning:".custom_color(CTP_YELLOW));
+        }
+
+        eprintln!();
+
+        let installed = run_cargo(&["install", "larpshell"]);
+        if installed {
+            eprintln!("  {} installed larpshell", "\u{2713}".custom_color(CTP_GREEN));
+        } else {
+            eprintln!(
+                "  {} cargo install larpshell failed — run it manually",
+                "error:".custom_color(CTP_RED)
+            );
+        }
+
+        eprintln!();
+        eprintln!("to keep the 'nlsh-rs' command name, add to your shell config:");
+        eprintln!("  {}", "alias nlsh-rs=larpshell".custom_color(CTP_BLUE).bold());
+        eprintln!();
+        eprintln!("{}", "restart your shell.".custom_color(CTP_YELLOW));
+    } else {
+        eprintln!();
+        eprintln!("to migrate manually:");
+        eprintln!("  {}", "cargo uninstall nlsh-rs".custom_color(CTP_BLUE).bold());
+        eprintln!("  {}", "cargo install larpshell".custom_color(CTP_BLUE).bold());
+    }
 }
