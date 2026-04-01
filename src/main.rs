@@ -10,6 +10,7 @@ mod interactive;
 mod prompt;
 mod providers;
 mod shell_integration;
+mod slash_commands;
 mod uninstall;
 
 use std::io::IsTerminal;
