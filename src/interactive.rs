@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::io;
+use std::io::Write;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use colored::*;
 use rustyline::completion::Completer;
@@ -12,6 +14,84 @@ use rustyline::validate::Validator;
 use rustyline::{Editor, Helper};
 
 use crate::common::{EXIT_SIGINT, exit_with_code, get_current_directory, show_cursor};
+use crate::slash_commands;
+
+// Number of preview lines currently drawn below the prompt.
+static PREVIEW_LINE_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+// Longest command name length (used for column alignment).
+// "uninstall" = 9 chars. Column = 2 (indent) + 1 (/) + 9 (name) + 4 (gap) = 16
+const PREVIEW_DESC_COL: usize = 16;
+
+/// Formats one preview row with ANSI coloring.
+/// `cmd_name` includes the leading `/`.
+/// `typed_len` is how many chars of `cmd_name` the user has already typed.
+fn format_preview_row(cmd_name: &str, typed_len: usize, description: &str) -> String {
+    let typed = &cmd_name[..typed_len.min(cmd_name.len())];
+    let untyped = &cmd_name[typed_len.min(cmd_name.len())..];
+    let name_display_len = 1 + cmd_name.len(); // "  " + "/" + name
+    let pad = PREVIEW_DESC_COL.saturating_sub(name_display_len + 2);
+    format!(
+        "  {}{}{}{}",
+        typed.cyan().bold(),
+        untyped.truecolor(128, 128, 128),
+        " ".repeat(pad + 4),
+        description.truecolor(128, 128, 128),
+    )
+}
+
+/// Erase all currently-drawn preview lines below the prompt.
+pub fn clear_slash_preview() {
+    let n = PREVIEW_LINE_COUNT.swap(0, Ordering::Relaxed);
+    if n == 0 {
+        return;
+    }
+    let mut seq = "\x1b[s".to_string();
+    for i in 1..=n {
+        seq.push_str(&format!("\x1b[{}B\r\x1b[K", i));
+    }
+    seq.push_str("\x1b[u");
+    eprint!("{seq}");
+    let _ = io::stderr().flush();
+}
+
+/// Draw a filtered command preview below the current prompt line.
+pub fn draw_slash_preview(line: &str) {
+    let matches = slash_commands::filter(line);
+    let prev_count = PREVIEW_LINE_COUNT.load(Ordering::Relaxed);
+    let new_count = matches.len();
+
+    let typed_len = line.len();
+    let mut seq = "\x1b[s".to_string();
+    let max_lines = prev_count.max(new_count);
+    for i in 1..=max_lines {
+        seq.push_str(&format!("\x1b[{}B\r\x1b[K", i));
+    }
+    seq.push_str("\x1b[u");
+    for (idx, cmd) in matches.iter().enumerate() {
+        let row = format_preview_row(
+            &format!("/{}", cmd.name),
+            typed_len,
+            cmd.description,
+        );
+        seq.push_str(&format!("\x1b[s\x1b[{}B\r{}\x1b[u", idx + 1, row));
+    }
+    PREVIEW_LINE_COUNT.store(new_count, Ordering::Relaxed);
+    eprint!("{seq}");
+    let _ = io::stderr().flush();
+}
+
+/// Print blank lines below the current cursor to guarantee preview space.
+pub fn reserve_preview_space() {
+    let n = slash_commands::COMMANDS.len();
+    let mut seq = String::new();
+    for _ in 0..n {
+        seq.push('\n');
+    }
+    seq.push_str(&format!("\x1b[{}A", n));
+    eprint!("{seq}");
+    let _ = io::stderr().flush();
+}
 
 pub struct NlshHelper;
 
@@ -122,5 +202,22 @@ mod tests {
     fn highlight_char_false_for_normal_line() {
         let helper = NlshHelper;
         assert!(!helper.highlight_char("list files", 10, CmdKind::Other));
+    }
+
+    #[test]
+    fn format_preview_row_pads_to_column() {
+        colored::control::set_override(false);
+        let row = format_preview_row_plain("/api", 0, "configure API provider");
+        assert!(row.contains("configure API provider"), "row: {row}");
+        let row2 = format_preview_row_plain("/uninstall", 0, "uninstall nlsh-rs");
+        let desc_pos1 = row.find("configure").unwrap();
+        let desc_pos2 = row2.find("uninstall nlsh").unwrap();
+        assert_eq!(desc_pos1, desc_pos2, "descriptions must align");
+    }
+
+    fn format_preview_row_plain(cmd_name: &str, typed_len: usize, description: &str) -> String {
+        colored::control::set_override(false);
+        let r = format_preview_row(cmd_name, typed_len, description);
+        strip_ansi_escapes::strip_str(&r)
     }
 }
