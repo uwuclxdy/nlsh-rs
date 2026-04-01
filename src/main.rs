@@ -3,6 +3,7 @@ mod shell_integration;
 
 use colored::*;
 use shell_integration::remove_shell_integration;
+use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::process::Command;
 
@@ -18,6 +19,38 @@ fn confirm(prompt: &str) -> bool {
     io::stdin().read_line(&mut input).ok();
     let s = input.trim().to_lowercase();
     s.is_empty() || s == "y" || s == "yes"
+}
+
+/// Copies `~/.config/nlsh-rs/` → `~/.config/larpshell/` if larpshell has no
+/// config yet.  Returns true if files were copied.
+fn migrate_config() -> bool {
+    let Some(base) = dirs::config_dir() else {
+        return false;
+    };
+    let old = base.join("nlsh-rs");
+    let new = base.join("larpshell");
+
+    if !old.exists() || new.join("config.toml").exists() {
+        return false;
+    }
+
+    if fs::create_dir_all(&new).is_err() {
+        return false;
+    }
+
+    let Ok(entries) = fs::read_dir(&old) else {
+        return false;
+    };
+
+    let mut copied = false;
+    for entry in entries.flatten() {
+        if entry.file_type().is_ok_and(|t| t.is_file()) {
+            if fs::copy(entry.path(), new.join(entry.file_name())).is_ok() {
+                copied = true;
+            }
+        }
+    }
+    copied
 }
 
 fn run_cargo(args: &[&str]) -> bool {
@@ -47,6 +80,13 @@ fn main() {
             "warning:".custom_color(CTP_YELLOW),
             e
         ),
+    }
+
+    if migrate_config() {
+        eprintln!(
+            "  {} migrated config to ~/.config/larpshell/",
+            "\u{2713}".custom_color(CTP_GREEN)
+        );
     }
 
     eprintln!();
