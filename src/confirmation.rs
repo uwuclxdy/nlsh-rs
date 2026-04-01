@@ -2,8 +2,9 @@ use colored::*;
 
 use crate::cli::is_interactive_terminal;
 use crate::common::{
-    ANSI_CLEAR_LINE, CTP_BLUE, CTP_OVERLAY0, CTP_TEXT, CTP_YELLOW, EXIT_SIGINT, clear_n_lines,
-    count_visual_lines, exit_with_code, flush_stderr, get_terminal_width, show_cursor,
+    ANSI_CLEAR_LINE, CTP_BLUE, CTP_OVERLAY0, CTP_PRIMARY, CTP_TEXT, CTP_YELLOW, EXIT_SIGINT,
+    clear_n_lines, count_visual_lines, exit_with_code, flush_stderr, get_terminal_width,
+    show_cursor,
 };
 
 pub enum ConfirmResult {
@@ -108,18 +109,18 @@ pub fn display_command(command: &str) -> usize {
     let lines: Vec<&str> = command.lines().collect();
     if lines.len() == 1 {
         let visual = count_visual_lines(&format!("$ {}", command), width);
-        eprintln!("{} {}", "$".custom_color(CTP_BLUE), command.custom_color(CTP_TEXT).bold());
+        eprintln!("{} {}", "$".custom_color(CTP_PRIMARY), command.custom_color(CTP_TEXT).bold());
         visual
     } else {
         let mut visual = count_visual_lines("> multiline command:", width);
         eprintln!(
             "{} {}",
-            ">".custom_color(CTP_BLUE),
+            ">".custom_color(CTP_PRIMARY),
             "multiline command:".custom_color(CTP_TEXT).bold()
         );
         for line in lines.iter() {
             visual += count_visual_lines(&format!("$ {}", line), width);
-            eprintln!("{} {}", "$".custom_color(CTP_BLUE), line.custom_color(CTP_TEXT));
+            eprintln!("{} {}", "$".custom_color(CTP_PRIMARY), line.custom_color(CTP_TEXT));
         }
         visual
     }
@@ -258,10 +259,10 @@ fn confirmation_prompt(with_explain: bool) -> usize {
         eprintln!("{}", line1);
         let line2 = format!(
             "[{}] to execute, [{}] to explain, [{}] to edit, [{}] to cancel",
-            "Y/Enter".bold(),
-            "E".bold(),
-            "Arrow Up".bold(),
-            "N".bold()
+            "Y/Enter".custom_color(CTP_PRIMARY).bold(),
+            "E".custom_color(CTP_PRIMARY).bold(),
+            "Arrow Up".custom_color(CTP_PRIMARY).bold(),
+            "N".custom_color(CTP_PRIMARY).bold()
         );
         visual += count_visual_lines(&line2, width);
         eprint!("{}", line2.custom_color(CTP_BLUE));
@@ -275,9 +276,9 @@ fn confirmation_prompt(with_explain: bool) -> usize {
         eprintln!("{}", line1);
         let line2 = format!(
             "[{}] to execute, [{}] to edit, [{}] to cancel",
-            "Y/Enter".bold(),
-            "Arrow Up".bold(),
-            "N".bold()
+            "Y/Enter".custom_color(CTP_PRIMARY).bold(),
+            "Arrow Up".custom_color(CTP_PRIMARY).bold(),
+            "N".custom_color(CTP_PRIMARY).bold()
         );
         visual += count_visual_lines(&line2, width);
         eprint!("{}", line2.custom_color(CTP_BLUE));
@@ -295,15 +296,15 @@ pub fn edit_command(current: &str) -> Option<String> {
 
     let hint_text = format!(
         "[{}] to confirm, [{}] to quit",
-        "Enter".bold(),
-        "Ctrl+C".bold()
+        "Enter".custom_color(CTP_PRIMARY).bold(),
+        "Ctrl+C".custom_color(CTP_PRIMARY).bold()
     );
     let hint_rows = count_visual_lines("[Enter] to confirm, [Ctrl+C] to quit", width);
 
     // Draw: command on current line (no newline), hint on the line below.
     // Then move cursor back up to the command line.
     let init: String = buf.iter().collect();
-    eprint!("{} {}", "$".custom_color(CTP_BLUE), init.custom_color(CTP_TEXT).bold());
+    eprint!("{} {}", "$".custom_color(CTP_PRIMARY), init.custom_color(CTP_TEXT).bold());
     eprintln!(); // move to hint line
     eprint!("{}", hint_text.custom_color(CTP_BLUE));
     // cursor up 1 line, then set absolute column: "$ " = 2 visible chars, 1-indexed
@@ -329,7 +330,7 @@ pub fn edit_command(current: &str) -> Option<String> {
         eprint!(
             "{}{} {}",
             ANSI_CLEAR_LINE,
-            "$".custom_color(CTP_BLUE),
+            "$".custom_color(CTP_PRIMARY),
             s.custom_color(CTP_TEXT).bold()
         );
         eprint!("\x1b[{}G", 3 + pos);
