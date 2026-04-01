@@ -5,15 +5,15 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use colored::*;
-use rustyline::completion::Completer;
+use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::{CmdKind, Highlighter};
 use rustyline::hint::Hinter;
 use rustyline::history::DefaultHistory;
 use rustyline::validate::Validator;
 use rustyline::{
-    Cmd, ConditionalEventHandler, Editor, Event, EventContext, EventHandler, Helper, KeyCode,
-    KeyEvent, Modifiers, RepeatCount,
+    Cmd, CompletionType, ConditionalEventHandler, Config, Editor, Event, EventContext,
+    EventHandler, Helper, KeyCode, KeyEvent, Modifiers, RepeatCount,
 };
 
 use crate::common::{EXIT_SIGINT, exit_with_code, get_current_directory, show_cursor};
@@ -113,7 +113,29 @@ pub struct NlshHelper;
 impl Helper for NlshHelper {}
 
 impl Completer for NlshHelper {
-    type Candidate = String;
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        _pos: usize,
+        _ctx: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Pair>)> {
+        if !line.starts_with('/') {
+            return Ok((0, vec![]));
+        }
+        let matches = slash_commands::filter(line);
+        // Only complete when there is exactly one match (unambiguous) or the
+        // first match when the user explicitly presses Tab.
+        let candidates: Vec<Pair> = matches
+            .iter()
+            .map(|cmd| {
+                let name = format!("/{}", cmd.name);
+                Pair { display: name.clone(), replacement: name }
+            })
+            .collect();
+        Ok((0, candidates))
+    }
 }
 
 impl Hinter for NlshHelper {
@@ -196,7 +218,10 @@ where
 {
     let mut editor_lock = EDITOR.lock().unwrap_or_else(|e| e.into_inner());
     let editor = editor_lock.get_or_insert_with(|| {
-        let mut ed = Editor::<NlshHelper, DefaultHistory>::new().unwrap();
+        let mut ed = Editor::<NlshHelper, DefaultHistory>::with_config(
+            Config::builder().completion_type(CompletionType::List).build(),
+        )
+        .unwrap();
         ed.set_helper(Some(NlshHelper));
         ed.bind_sequence(
             Event::Any,
