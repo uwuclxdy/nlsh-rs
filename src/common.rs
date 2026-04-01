@@ -10,6 +10,7 @@ use unicode_width::UnicodeWidthStr;
 pub const EXIT_SIGINT: i32 = 130;
 
 // Catppuccin Mocha palette — terminal truecolor tokens
+pub const CTP_PRIMARY: colored::CustomColor = colored::CustomColor { r: 0xE0, g: 0x7B, b: 0x53 }; // Claude Orange
 pub const CTP_BLUE: colored::CustomColor = colored::CustomColor { r: 0x89, g: 0xb4, b: 0xfa };
 pub const CTP_GREEN: colored::CustomColor = colored::CustomColor { r: 0xa6, g: 0xe3, b: 0xa1 };
 pub const CTP_RED: colored::CustomColor = colored::CustomColor { r: 0xf3, g: 0x8b, b: 0xa8 };
