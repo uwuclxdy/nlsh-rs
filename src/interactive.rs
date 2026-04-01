@@ -44,41 +44,53 @@ fn format_preview_row(cmd_name: &str, typed_len: usize, description: &str) -> St
 }
 
 /// Erase all currently-drawn preview lines below the prompt.
+/// Must be called while the cursor is on the prompt line.
 pub fn clear_slash_preview() {
     let n = PREVIEW_LINE_COUNT.swap(0, Ordering::Relaxed);
     if n == 0 {
         return;
     }
-    let mut seq = "\x1b[s".to_string();
-    for i in 1..=n {
-        seq.push_str(&format!("\x1b[{}B\r\x1b[K", i));
+    // Move down to each preview line and erase it, then return to prompt line.
+    let mut seq = String::new();
+    for _ in 0..n {
+        seq.push_str("\n\x1b[K");
     }
-    seq.push_str("\x1b[u");
+    seq.push_str(&format!("\x1b[{}A\r", n));
     eprint!("{seq}");
     let _ = io::stderr().flush();
 }
 
 /// Draw a filtered command preview below the current prompt line.
+/// Redraws from scratch: erases old lines, writes new ones, returns cursor to prompt line.
 pub fn draw_slash_preview(line: &str) {
     let matches = slash_commands::filter(line);
     let prev_count = PREVIEW_LINE_COUNT.load(Ordering::Relaxed);
     let new_count = matches.len();
+    let max_lines = prev_count.max(new_count);
+
+    if max_lines == 0 {
+        return;
+    }
 
     let typed_len = line.len();
-    let mut seq = "\x1b[s".to_string();
-    let max_lines = prev_count.max(new_count);
-    for i in 1..=max_lines {
-        seq.push_str(&format!("\x1b[{}B\r\x1b[K", i));
+    let mut seq = String::new();
+
+    // Erase old lines and write new ones in a single downward pass.
+    for i in 0..max_lines {
+        seq.push_str("\n\x1b[K"); // move down one line, erase it
+        if let Some(cmd) = matches.get(i) {
+            let row = format_preview_row(
+                &format!("/{}", cmd.name),
+                typed_len,
+                cmd.description,
+            );
+            seq.push('\r');
+            seq.push_str(&row);
+        }
     }
-    seq.push_str("\x1b[u");
-    for (idx, cmd) in matches.iter().enumerate() {
-        let row = format_preview_row(
-            &format!("/{}", cmd.name),
-            typed_len,
-            cmd.description,
-        );
-        seq.push_str(&format!("\x1b[s\x1b[{}B\r{}\x1b[u", idx + 1, row));
-    }
+    // Return cursor to the prompt line.
+    seq.push_str(&format!("\x1b[{}A\r", max_lines));
+
     PREVIEW_LINE_COUNT.store(new_count, Ordering::Relaxed);
     eprint!("{seq}");
     let _ = io::stderr().flush();
@@ -113,8 +125,12 @@ impl Validator for NlshHelper {}
 impl Highlighter for NlshHelper {
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
         if !line.starts_with('/') {
+            // Clear any stale preview when user switches away from /commands.
+            clear_slash_preview();
             return Cow::Borrowed(line);
         }
+        // Draw preview after rustyline redraws the prompt line.
+        draw_slash_preview(line);
         Cow::Owned(line.cyan().bold().to_string())
     }
 
@@ -136,6 +152,8 @@ impl ConditionalEventHandler for SlashPreviewHandler {
         let line = ctx.line();
         let pos = ctx.pos();
 
+        // Compute what the line will look like after this keypress,
+        // so we can clear preview early when switching away from /commands.
         let effective = match evt {
             Event::KeySeq(keys) => match keys.first() {
                 Some(KeyEvent(KeyCode::Char(c), Modifiers::NONE)) => {
@@ -158,9 +176,9 @@ impl ConditionalEventHandler for SlashPreviewHandler {
             _ => line.to_string(),
         };
 
-        if effective.starts_with('/') {
-            draw_slash_preview(&effective);
-        } else {
+        // If the line will no longer start with '/', clear preview now
+        // (highlight won't be called for non-slash lines).
+        if !effective.starts_with('/') {
             clear_slash_preview();
         }
 
